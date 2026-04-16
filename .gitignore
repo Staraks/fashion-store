@@ -1,0 +1,18 @@
+# Virtual Environment
+ai-service/venv/
+ai-service/venv
+**/venv/
+**/.venv/
+
+# Python cache
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Environment variables
+.env
+
+# Large ML models and caches (если будут)
+**/*.pth
+**/*.bin
+**/__pycache__/
