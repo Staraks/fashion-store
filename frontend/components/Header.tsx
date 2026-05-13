@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, LogOut, Menu, Search, ShoppingBag, User, X } from 'lucide-react';
+import { LayoutDashboard, LogOut, Menu, ShoppingBag, User, X } from 'lucide-react';
 
 import { useAppContext } from '../store/AppContext';
+import { canAccessAdmin } from '../utils/adminAccess';
 
 export default function Header({ onCartOpen }: { onCartOpen: () => void }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { cartCount, favorites, logout, user } = useAppContext();
   const location = useLocation();
   const activeCategory = new URLSearchParams(location.search).get('category');
-  const canManageAdmin = Boolean(
-    user && (user.isStaff || user.isSuperuser || ['admin', 'manager', 'content_manager', 'staff'].includes(user.role))
-  );
+  const canManageAdmin = canAccessAdmin(user);
 
   const navLinks = [
     {
@@ -33,60 +32,60 @@ export default function Header({ onCartOpen }: { onCartOpen: () => void }) {
   ];
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b border-gray-100 px-4 md:px-8 py-4 flex items-center justify-between font-inter text-sm tracking-widest">
+    <header className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-100 bg-white px-4 py-4 font-inter text-sm tracking-widest md:px-8">
       <button className="md:hidden" onClick={() => setIsMenuOpen(!isMenuOpen)}>
         {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
 
-      <nav className="hidden md:flex items-center space-x-8">
+      <nav className="hidden items-center space-x-8 md:flex">
         {navLinks.map((link) => (
           <Link
             key={link.name}
             to={link.path}
-            className={`hover:opacity-60 transition-opacity flex items-center gap-1 ${link.isActive ? 'font-bold' : ''}`}
+            className={`flex items-center gap-1 transition-opacity hover:opacity-60 ${link.isActive ? 'font-bold' : ''}`}
           >
             {link.name}
-            {link.count !== undefined && link.count > 0 && (
-              <span className="text-[10px] bg-black text-white px-1.5 rounded-full">{link.count}</span>
-            )}
+            {link.count !== undefined && link.count > 0 ? (
+              <span className="rounded-full bg-black px-1.5 text-[10px] text-white">{link.count}</span>
+            ) : null}
           </Link>
         ))}
       </nav>
 
-      <Link to="/" className="absolute left-1/2 -translate-x-1/2 font-playfair text-2xl font-bold tracking-[0.2em]">
-        VOID.
+      <Link
+        to="/"
+        className="absolute left-1/2 -translate-x-1/2 font-libre-barcode text-3xl lowercase tracking-[0.08em] md:text-4xl"
+      >
+        fashion store
       </Link>
 
       <div className="flex items-center space-x-4 md:space-x-6">
-        {user ? <span className="hidden md:block text-xs opacity-60">{user.name || user.email}</span> : null}
-        <button className="hover:opacity-60 transition-opacity">
-          <Search size={20} />
-        </button>
-        <button className="relative hover:opacity-60 transition-opacity" onClick={onCartOpen}>
+        {user ? <span className="hidden text-xs opacity-60 md:block">{user.username || user.email}</span> : null}
+        <button className="relative transition-opacity hover:opacity-60" onClick={onCartOpen}>
           <ShoppingBag size={20} />
-          {cartCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-black text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full">
+          {cartCount > 0 ? (
+            <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-black text-[9px] text-white">
               {cartCount}
             </span>
-          )}
+          ) : null}
         </button>
         {canManageAdmin ? (
-          <Link to="/admin" className="hover:opacity-60 transition-opacity" title="Админка">
+          <Link to="/admin" className="transition-opacity hover:opacity-60" title="Админка">
             <LayoutDashboard size={20} />
           </Link>
         ) : null}
-        <Link to="/auth" className="hover:opacity-60 transition-opacity">
+        <Link to={user ? '/profile' : '/auth'} className="transition-opacity hover:opacity-60">
           <User size={20} />
         </Link>
         {user ? (
-          <button onClick={logout} className="hover:opacity-60 transition-opacity" title="Выйти">
+          <button onClick={logout} className="transition-opacity hover:opacity-60" title="Выйти">
             <LogOut size={18} />
           </button>
         ) : null}
       </div>
 
-      {isMenuOpen && (
-        <div className="fixed inset-0 top-[65px] bg-white z-40 md:hidden p-8 flex flex-col space-y-6">
+      {isMenuOpen ? (
+        <div className="fixed inset-0 top-[65px] z-40 flex flex-col space-y-6 bg-white p-8 md:hidden">
           {navLinks.map((link) => (
             <Link
               key={link.name}
@@ -97,8 +96,12 @@ export default function Header({ onCartOpen }: { onCartOpen: () => void }) {
               {link.name} {link.count !== undefined && link.count > 0 ? `(${link.count})` : ''}
             </Link>
           ))}
-          <Link to="/auth" className="text-xl font-medium tracking-widest" onClick={() => setIsMenuOpen(false)}>
-            {user ? 'АККАУНТ' : 'ВОЙТИ'}
+          <Link
+            to={user ? '/profile' : '/auth'}
+            className="text-xl font-medium tracking-widest"
+            onClick={() => setIsMenuOpen(false)}
+          >
+            {user ? 'ПРОФИЛЬ' : 'ВОЙТИ'}
           </Link>
           {canManageAdmin ? (
             <Link to="/admin" className="text-xl font-medium tracking-widest" onClick={() => setIsMenuOpen(false)}>
@@ -116,11 +119,8 @@ export default function Header({ onCartOpen }: { onCartOpen: () => void }) {
               ВЫЙТИ
             </button>
           ) : null}
-          <div className="pt-8 border-t border-gray-100 space-y-4">
-            <p className="text-sm opacity-50">ПОИСК</p>
-          </div>
         </div>
-      )}
+      ) : null}
     </header>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { authAPI } from '../services/api';
 import { useAppContext } from '../store/AppContext';
@@ -8,13 +8,21 @@ type AuthMode = 'login' | 'register';
 
 export default function AuthPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { authLoading, setAuthSession, user } = useAppContext();
+  const routeMessage =
+    typeof location.state === 'object' &&
+    location.state &&
+    'message' in location.state &&
+    typeof location.state.message === 'string'
+      ? location.state.message
+      : '';
   const [mode, setMode] = useState<AuthMode>('login');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [loginForm, setLoginForm] = useState({ identifier: '', password: '' });
   const [registerForm, setRegisterForm] = useState({
-    name: '',
+    username: '',
     email: '',
     password: '',
     password_confirm: '',
@@ -57,28 +65,29 @@ export default function AuthPage() {
   };
 
   return (
-    <main className="max-w-5xl mx-auto px-4 py-16 md:py-24">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+    <main className="mx-auto max-w-5xl px-4 py-16 md:py-24">
+      <div className="grid grid-cols-1 items-start gap-12 lg:grid-cols-2">
         <section className="space-y-6">
           <p className="text-sm uppercase tracking-[0.35em] opacity-50">Аккаунт</p>
-          <h1 className="text-5xl md:text-6xl font-playfair font-bold uppercase tracking-tight leading-none">
+          <h1 className="font-playfair text-5xl font-bold uppercase leading-none tracking-tight md:text-6xl">
             Вход и регистрация
           </h1>
-          <p className="text-lg leading-relaxed opacity-70 max-w-md">
-            Корзина и избранное, которые вы добавили как гость, будут привязаны к аккаунту сразу после входа.
+          <p className="max-w-md text-lg leading-relaxed opacity-70">
+            Корзина и избранное, которые вы добавили как гость, будут привязаны к аккаунту сразу
+            после входа.
           </p>
         </section>
 
         <section className="border border-gray-200 p-6 md:p-8">
-          <div className="flex gap-3 mb-8">
+          <div className="mb-8 flex gap-3">
             <button
               type="button"
               onClick={() => {
                 setMode('login');
                 setError('');
               }}
-              className={`px-5 py-3 text-sm uppercase tracking-[0.25em] border ${
-                mode === 'login' ? 'bg-black text-white border-black' : 'border-gray-300'
+              className={`border px-5 py-3 text-sm uppercase tracking-[0.25em] ${
+                mode === 'login' ? 'border-black bg-black text-white' : 'border-gray-300'
               }`}
             >
               Вход
@@ -89,8 +98,8 @@ export default function AuthPage() {
                 setMode('register');
                 setError('');
               }}
-              className={`px-5 py-3 text-sm uppercase tracking-[0.25em] border ${
-                mode === 'register' ? 'bg-black text-white border-black' : 'border-gray-300'
+              className={`border px-5 py-3 text-sm uppercase tracking-[0.25em] ${
+                mode === 'register' ? 'border-black bg-black text-white' : 'border-gray-300'
               }`}
             >
               Регистрация
@@ -98,8 +107,14 @@ export default function AuthPage() {
           </div>
 
           {error ? (
-            <div className="mb-6 border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
+            <div className="mb-6 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
+            </div>
+          ) : null}
+
+          {routeMessage && !error ? (
+            <div className="mb-6 border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              {routeMessage}
             </div>
           ) : null}
 
@@ -107,7 +122,7 @@ export default function AuthPage() {
             <form className="space-y-5" onSubmit={handleLogin}>
               <input
                 type="text"
-                placeholder="Email или username"
+                placeholder="Электронная почта или имя пользователя"
                 value={loginForm.identifier}
                 onChange={(event) => setLoginForm((prev) => ({ ...prev, identifier: event.target.value }))}
                 className="w-full border-b border-gray-300 py-3 outline-none focus:border-black"
@@ -124,7 +139,7 @@ export default function AuthPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-black text-white py-4 text-sm uppercase tracking-[0.3em] disabled:opacity-60"
+                className="w-full bg-black py-4 text-sm uppercase tracking-[0.3em] text-white disabled:opacity-60"
               >
                 {submitting ? 'Входим...' : 'Войти'}
               </button>
@@ -133,15 +148,15 @@ export default function AuthPage() {
             <form className="space-y-5" onSubmit={handleRegister}>
               <input
                 type="text"
-                placeholder="Имя"
-                value={registerForm.name}
-                onChange={(event) => setRegisterForm((prev) => ({ ...prev, name: event.target.value }))}
+                placeholder="Имя пользователя"
+                value={registerForm.username}
+                onChange={(event) => setRegisterForm((prev) => ({ ...prev, username: event.target.value }))}
                 className="w-full border-b border-gray-300 py-3 outline-none focus:border-black"
                 required
               />
               <input
                 type="email"
-                placeholder="Email"
+                placeholder="Электронная почта"
                 value={registerForm.email}
                 onChange={(event) => setRegisterForm((prev) => ({ ...prev, email: event.target.value }))}
                 className="w-full border-b border-gray-300 py-3 outline-none focus:border-black"
@@ -168,7 +183,7 @@ export default function AuthPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-black text-white py-4 text-sm uppercase tracking-[0.3em] disabled:opacity-60"
+                className="w-full bg-black py-4 text-sm uppercase tracking-[0.3em] text-white disabled:opacity-60"
               >
                 {submitting ? 'Создаем аккаунт...' : 'Зарегистрироваться'}
               </button>

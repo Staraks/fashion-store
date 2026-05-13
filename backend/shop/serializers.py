@@ -1,22 +1,50 @@
+from django.conf import settings
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from django.db import transaction
 from rest_framework import serializers
 
-from .models import Category, Gender, Product, ProductImage, ProductSize, ProductVariant, Size
+from .models import Category, Gender, Order, OrderDetail, Product, ProductImage, ProductSize, ProductVariant, Review, Size
 
 User = get_user_model()
+
+ADMIN_ROLE_CHOICES = ("user", "content_manager", "sales_manager", "admin")
 
 
 class UserSerializer(serializers.ModelSerializer):
     isStaff = serializers.BooleanField(source="is_staff", read_only=True)
     isSuperuser = serializers.BooleanField(source="is_superuser", read_only=True)
+    avatarUrl = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "name", "email", "username", "role", "isStaff", "isSuperuser"]
+        fields = ["id", "name", "email", "username", "role", "isStaff", "isSuperuser", "avatarUrl"]
+
+    def get_avatarUrl(self, obj):
+        if not obj.avatar_path:
+            return None
+
+        request = self.context.get("request")
+        url = f"{settings.MEDIA_URL}{obj.avatar_path}"
+        return request.build_absolute_uri(url) if request else url
+
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    isStaff = serializers.BooleanField(source="is_staff", read_only=True)
+    isSuperuser = serializers.BooleanField(source="is_superuser", read_only=True)
+
+    class Meta:
+        model = User
+        fields = ["id", "username", "email", "role", "isStaff", "isSuperuser"]
+
+
+class AdminUserRoleUpdateSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(choices=ADMIN_ROLE_CHOICES)
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -25,7 +53,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["name", "email", "password", "password_confirm"]
+        fields = ["username", "email", "password", "password_confirm"]
 
     def validate_email(self, value):
         email = value.strip().lower()
@@ -33,14 +61,21 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A user with this email already exists.")
         return email
 
+    def validate_username(self, value):
+        username = value.strip()
+        if not username:
+            raise serializers.ValidationError("Username is required.")
+        if User.objects.filter(username__iexact=username).exists():
+            raise serializers.ValidationError("A user with this username already exists.")
+        return username
+
     def validate(self, attrs):
         if attrs["password"] != attrs["password_confirm"]:
             raise serializers.ValidationError({"password_confirm": "Passwords do not match."})
 
         draft_user = User(
             email=attrs["email"],
-            username=attrs["email"],
-            name=attrs.get("name", "").strip(),
+            username=attrs["username"],
         )
         validate_password(attrs["password"], draft_user)
         return attrs
@@ -52,8 +87,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         user = User(
             email=email,
-            username=email,
-            name=validated_data.get("name", "").strip(),
+            username=validated_data["username"],
         )
         user.set_password(password)
         user.save()
@@ -63,6 +97,43 @@ class RegisterSerializer(serializers.ModelSerializer):
 class LoginSerializer(serializers.Serializer):
     identifier = serializers.CharField()
     password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=False, allow_blank=True)
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    password = serializers.CharField(write_only=True, min_length=8)
+    password_confirm = serializers.CharField(write_only=True, min_length=8)
+
+    def validate(self, attrs):
+        if attrs["password"] != attrs["password_confirm"]:
+            raise serializers.ValidationError({"password_confirm": "Passwords do not match."})
+
+        try:
+            user_id = force_str(urlsafe_base64_decode(attrs["uid"]))
+            user = User.objects.get(pk=user_id)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            raise serializers.ValidationError({"token": "Password reset link is invalid or expired."})
+
+        if not default_token_generator.check_token(user, attrs["token"]):
+            raise serializers.ValidationError({"token": "Password reset link is invalid or expired."})
+
+        validate_password(attrs["password"], user)
+        attrs["user"] = user
+        return attrs
+
+    def save(self):
+        user = self.validated_data["user"]
+        user.set_password(self.validated_data["password"])
+        user.save(update_fields=["password"])
+        return user
 
 
 class GuestCartItemSerializer(serializers.Serializer):
@@ -82,6 +153,140 @@ class AccountStateSyncSerializer(serializers.Serializer):
 
 class OrderCreateSerializer(serializers.Serializer):
     shipping_address = serializers.CharField()
+
+
+class OrderItemSerializer(serializers.ModelSerializer):
+    productId = serializers.SerializerMethodField()
+    productName = serializers.SerializerMethodField()
+    brand = serializers.SerializerMethodField()
+    image = serializers.SerializerMethodField()
+    size = serializers.SerializerMethodField()
+    lineTotal = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderDetail
+        fields = [
+            "id",
+            "productId",
+            "productName",
+            "brand",
+            "image",
+            "size",
+            "quantity",
+            "price",
+            "lineTotal",
+        ]
+
+    def get_productId(self, obj):
+        return str(obj.product_size.variant.product_id)
+
+    def get_productName(self, obj):
+        return obj.product_size.variant.product.name
+
+    def get_brand(self, obj):
+        return obj.product_size.variant.product.brand
+
+    def get_image(self, obj):
+        request = self.context.get("request")
+        primary_image = (
+            obj.product_size.variant.product.images.all().order_by("-is_primary", "sort_order", "id").first()
+        )
+        if not primary_image:
+            return None
+
+        url = primary_image.image.url
+        return request.build_absolute_uri(url) if request else url
+
+    def get_size(self, obj):
+        return obj.product_size.size.size_name
+
+    def get_lineTotal(self, obj):
+        return int((obj.price * obj.quantity).quantize(Decimal("1")))
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    totalAmount = serializers.SerializerMethodField()
+    shippingAddress = serializers.CharField(source="shipping_address")
+    createdAt = serializers.DateTimeField(source="created_at")
+    items = OrderItemSerializer(source="orderdetail_set", many=True)
+    itemsCount = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Order
+        fields = [
+            "id",
+            "status",
+            "totalAmount",
+            "shippingAddress",
+            "createdAt",
+            "itemsCount",
+            "items",
+        ]
+
+    def get_totalAmount(self, obj):
+        return int(obj.total_amount.quantize(Decimal("1")))
+
+    def get_itemsCount(self, obj):
+        return sum(item.quantity for item in obj.orderdetail_set.all())
+
+
+class AdminOrderSerializer(OrderSerializer):
+    customer = serializers.SerializerMethodField()
+
+    class Meta(OrderSerializer.Meta):
+        fields = OrderSerializer.Meta.fields + ["customer"]
+
+    def get_customer(self, obj):
+        if not obj.user:
+            return None
+
+        return {
+            "id": obj.user_id,
+            "username": obj.user.username,
+            "email": obj.user.email,
+        }
+
+
+class OrderStatusUpdateSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=[
+            ("new", "new"),
+            ("processing", "processing"),
+            ("shipped", "shipped"),
+            ("delivered", "delivered"),
+            ("cancelled", "cancelled"),
+        ]
+    )
+
+
+class ReviewCreateSerializer(serializers.Serializer):
+    rating = serializers.IntegerField(min_value=1, max_value=5)
+    comment = serializers.CharField(required=False, allow_blank=True)
+
+
+class ReviewSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+    avatarUrl = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Review
+        fields = [
+            "id",
+            "username",
+            "avatarUrl",
+            "rating",
+            "comment",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_avatarUrl(self, obj):
+        if not obj.user.avatar_path:
+            return None
+
+        request = self.context.get("request")
+        url = f"{settings.MEDIA_URL}{obj.user.avatar_path}"
+        return request.build_absolute_uri(url) if request else url
 
 
 class ProductCreateSizeSerializer(serializers.Serializer):
@@ -137,6 +342,38 @@ class ProductCreateSerializer(serializers.Serializer):
 
         return attrs
 
+    def _sync_sizes(self, variant, size_rows):
+        existing_sizes = {row.size_id: row for row in variant.sizes.all()}
+        next_size_ids = set()
+
+        for row in size_rows:
+            size_id = row["sizeId"]
+            next_size_ids.add(size_id)
+            existing = existing_sizes.get(size_id)
+            if existing:
+                existing.stock_quantity = row["stockQuantity"]
+                existing.save(update_fields=["stock_quantity", "updated_at"])
+            else:
+                ProductSize.objects.create(
+                    variant=variant,
+                    size_id=size_id,
+                    stock_quantity=row["stockQuantity"],
+                )
+
+        variant.sizes.exclude(size_id__in=next_size_ids).delete()
+
+    def _replace_images(self, product, variant, images, primary_image_index):
+        product.images.all().delete()
+
+        for index, image in enumerate(images):
+            ProductImage.objects.create(
+                product=product,
+                variant=variant,
+                image=image,
+                is_primary=index == primary_image_index,
+                sort_order=index,
+            )
+
     def create(self, validated_data):
         images = validated_data.pop("images", [])
         primary_image_index = validated_data.pop("primaryImageIndex", 0)
@@ -157,35 +394,137 @@ class ProductCreateSerializer(serializers.Serializer):
                 color=color,
             )
 
-            ProductSize.objects.bulk_create(
-                [
-                    ProductSize(
-                        variant=variant,
-                        size_id=row["sizeId"],
-                        stock_quantity=row["stockQuantity"],
-                    )
-                    for row in size_rows
-                ]
-            )
-
-            # Create each image individually so ImageField storage and post_save
-            # signals run for every file, including embedding generation.
-            for index, image in enumerate(images):
-                ProductImage.objects.create(
-                    product=product,
-                    variant=variant,
-                    image=image,
-                    is_primary=index == primary_image_index,
-                    sort_order=index,
-                )
+            self._sync_sizes(variant, size_rows)
+            self._replace_images(product, variant, images, primary_image_index)
 
         return product
+
+    def update(self, instance, validated_data):
+        images = validated_data.pop("images", None)
+        primary_image_index = validated_data.pop("primaryImageIndex", 0)
+        gender_ids = validated_data.pop("genderIds")
+        size_rows = validated_data.pop("sizes")
+        category_id = validated_data.pop("categoryId")
+        color = validated_data.pop("color")
+
+        with transaction.atomic():
+            instance.category_id = category_id
+            instance.name = validated_data["name"]
+            instance.brand = validated_data.get("brand", "")
+            instance.material = validated_data.get("material", "")
+            instance.description = validated_data.get("description", "")
+            instance.base_price = validated_data["base_price"]
+            instance.discount_percent = validated_data.get("discount_percent", 0)
+            instance.save()
+            instance.genders.set(gender_ids)
+
+            variant = instance.variants.prefetch_related("sizes").order_by("id").first()
+            if variant:
+                variant.color = color
+                variant.save(update_fields=["color"])
+            else:
+                variant = ProductVariant.objects.create(
+                    product=instance,
+                    color=color,
+                )
+
+            self._sync_sizes(variant, size_rows)
+
+            if images:
+                self._replace_images(instance, variant, images, primary_image_index)
+
+        return instance
+
+
+class AdminProductImageSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductImage
+        fields = ["id", "url", "is_primary", "sort_order"]
+
+    def get_url(self, obj):
+        request = self.context.get("request")
+        url = obj.image.url
+        return request.build_absolute_uri(url) if request else url
+
+
+class AdminProductDetailSerializer(serializers.ModelSerializer):
+    basePrice = serializers.DecimalField(source="base_price", max_digits=12, decimal_places=2)
+    discountPercent = serializers.DecimalField(source="discount_percent", max_digits=5, decimal_places=2)
+    categoryId = serializers.SerializerMethodField()
+    subcategoryId = serializers.SerializerMethodField()
+    genderIds = serializers.SerializerMethodField()
+    color = serializers.SerializerMethodField()
+    sizes = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Product
+        fields = [
+            "id",
+            "name",
+            "brand",
+            "material",
+            "description",
+            "basePrice",
+            "discountPercent",
+            "categoryId",
+            "subcategoryId",
+            "genderIds",
+            "color",
+            "sizes",
+            "images",
+        ]
+
+    def _get_primary_variant(self, obj):
+        return obj.variants.prefetch_related("sizes").order_by("id").first()
+
+    def get_categoryId(self, obj):
+        if not obj.category:
+            return None
+        return obj.category.parent_id or obj.category_id
+
+    def get_subcategoryId(self, obj):
+        if not obj.category or not obj.category.parent_id:
+            return None
+        return obj.category_id
+
+    def get_genderIds(self, obj):
+        return list(obj.genders.values_list("id", flat=True))
+
+    def get_color(self, obj):
+        variant = self._get_primary_variant(obj)
+        return variant.color if variant else ""
+
+    def get_sizes(self, obj):
+        variant = self._get_primary_variant(obj)
+        if not variant:
+            return []
+
+        return [
+            {
+                "sizeId": size.size_id,
+                "stockQuantity": size.stock_quantity,
+            }
+            for size in variant.sizes.select_related("size").order_by("size__size_name")
+        ]
+
+    def get_images(self, obj):
+        ordered_images = obj.images.all().order_by("-is_primary", "sort_order", "id")
+        return AdminProductImageSerializer(
+            ordered_images,
+            many=True,
+            context=self.context,
+        ).data
 
 
 class ProductSerializer(serializers.ModelSerializer):
     id = serializers.SerializerMethodField()
     price = serializers.SerializerMethodField()
     oldPrice = serializers.SerializerMethodField()
+    material = serializers.CharField(read_only=True)
+    color = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     subcategory = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
@@ -200,6 +539,8 @@ class ProductSerializer(serializers.ModelSerializer):
             "brand",
             "price",
             "oldPrice",
+            "material",
+            "color",
             "category",
             "subcategory",
             "images",
@@ -207,6 +548,9 @@ class ProductSerializer(serializers.ModelSerializer):
             "sizes",
             "isBestseller",
         ]
+
+    def _get_primary_variant(self, obj):
+        return obj.variants.order_by("id").first()
 
     def get_id(self, obj):
         return str(obj.id)
@@ -220,6 +564,10 @@ class ProductSerializer(serializers.ModelSerializer):
         if not obj.discount_percent:
             return None
         return int(obj.base_price.quantize(Decimal("1")))
+
+    def get_color(self, obj):
+        variant = self._get_primary_variant(obj)
+        return variant.color if variant else ""
 
     def get_category(self, obj):
         gender_names = {gender.name.lower() for gender in obj.genders.all()}

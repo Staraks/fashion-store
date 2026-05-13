@@ -1,4 +1,4 @@
-import { AccountState, AdminCatalogOptions, AuthResponse, AuthUser, Product, ProductFilterOptions } from '../types';
+import { AccountState, AdminCatalogOptions, AdminOrder, AdminProductDetail, AdminUser, AuthResponse, AuthUser, Product, ProductFilterOptions, ProductReviewSummary, UserOrder } from '../types';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
@@ -61,10 +61,40 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function requestFile(path: string, init?: RequestInit): Promise<{ blob: Blob; filename: string | null }> {
+  const response = await fetch(`${API_BASE_URL}${path}`, init);
+
+  if (!response.ok) {
+    let errorMessage = `API request failed: ${response.status}`;
+
+    try {
+      const errorBody = await response.json();
+      errorMessage = extractErrorMessage(errorBody) || errorMessage;
+    } catch {
+      try {
+        errorMessage = (await response.text()) || errorMessage;
+      } catch {
+        // ignore non-text errors
+      }
+    }
+
+    throw new Error(errorMessage);
+  }
+
+  const disposition = response.headers.get('Content-Disposition');
+  const filenameMatch = disposition?.match(/filename="?([^"]+)"?/i);
+
+  return {
+    blob: await response.blob(),
+    filename: filenameMatch?.[1] ?? null,
+  };
+}
+
 function normalizeProduct(product: ApiProduct): Product {
   return {
     ...product,
     id: String(product.id),
+    similarity: typeof product.similarity === 'number' ? product.similarity : undefined,
     images: Array.isArray(product.images) ? product.images : [],
     sizes: Array.isArray(product.sizes) ? product.sizes : [],
     oldPrice: product.oldPrice ?? undefined,
@@ -153,22 +183,45 @@ export const productsAPI = {
     return request<ProductFilterOptions>(`/api/products/filters/${query ? `?${query}` : ''}`);
   },
 
-  searchByImage: async (file: File) => {
+  searchByImage: async (file: File, gender?: string | null) => {
     const formData = new FormData();
     formData.append('file', file);
+    const searchParams = new URLSearchParams();
 
-    const products = await request<ApiProduct[]>('/api/search-by-image/', {
+    if (gender) {
+      searchParams.set('gender', gender);
+    }
+
+    const query = searchParams.toString();
+    const products = await request<ApiProduct[]>(`/api/search-by-image/${query ? `?${query}` : ''}`, {
       method: 'POST',
       body: formData,
     });
 
     return products.map(normalizeProduct);
   },
+
+  getReviews: async (productId: string) =>
+    request<ProductReviewSummary>(`/api/products/${productId}/reviews/`),
+
+  createReview: async (
+    token: string,
+    productId: string,
+    payload: { rating: number; comment: string }
+  ) =>
+    request(`/api/products/${productId}/reviews/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(token),
+      },
+      body: JSON.stringify(payload),
+    }),
 };
 
 export const authAPI = {
   register: async (payload: {
-    name: string;
+    username: string;
     email: string;
     password: string;
     password_confirm: string;
@@ -195,6 +248,43 @@ export const authAPI = {
       headers: {
         ...getAuthHeaders(token),
       },
+    }),
+
+  updateAvatar: async (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    return request<AuthUser>('/api/auth/me/', {
+      method: 'PATCH',
+      headers: {
+        ...getAuthHeaders(token),
+      },
+      body: formData,
+    });
+  },
+
+  requestPasswordReset: async (token: string, email: string) =>
+    request<{ detail: string }>('/api/auth/password-reset/request/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(token),
+      },
+      body: JSON.stringify({ email }),
+    }),
+
+  confirmPasswordReset: async (payload: {
+    uid: string;
+    token: string;
+    password: string;
+    password_confirm: string;
+  }) =>
+    request<{ detail: string }>('/api/auth/password-reset/confirm/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     }),
 
   logout: async (token: string) =>
@@ -246,11 +336,55 @@ export const ordersAPI = {
       },
       body: JSON.stringify(payload),
     }),
+
+  list: async (token: string) =>
+    request<UserOrder[]>('/api/orders/', {
+      headers: {
+        ...getAuthHeaders(token),
+      },
+    }),
 };
 
 export const adminAPI = {
   getCatalogOptions: async (token: string) =>
     request<AdminCatalogOptions>('/api/admin/catalog/options/', {
+      headers: {
+        ...getAuthHeaders(token),
+      },
+    }),
+
+  getProducts: async (
+    token: string,
+    params?: {
+      category?: string | null;
+      subcategory?: string | null;
+      brand?: string | null;
+    }
+  ) => {
+    const searchParams = new URLSearchParams();
+
+    if (params?.category) {
+      searchParams.set('category', params.category);
+    }
+
+    if (params?.subcategory) {
+      searchParams.set('subcategory', params.subcategory);
+    }
+
+    if (params?.brand) {
+      searchParams.set('brand', params.brand);
+    }
+
+    const query = searchParams.toString();
+    return request<ApiProduct[]>(`/api/admin/products/${query ? `?${query}` : ''}`, {
+      headers: {
+        ...getAuthHeaders(token),
+      },
+    }).then((products) => products.map(normalizeProduct));
+  },
+
+  getProductDetail: async (token: string, productId: string) =>
+    request<AdminProductDetail>(`/api/admin/products/${productId}/`, {
       headers: {
         ...getAuthHeaders(token),
       },
@@ -294,5 +428,97 @@ export const adminAPI = {
       },
       body: formData,
     }).then(normalizeProduct);
+  },
+
+  updateProduct: async (
+    token: string,
+    productId: string,
+    payload: {
+      name: string;
+      brand: string;
+      material: string;
+      description: string;
+      basePrice: string;
+      discountPercent: string;
+      categoryId: string;
+      genderIds: number[];
+      color: string;
+      sizes: Array<{ sizeId: number; stockQuantity: number }>;
+      images: File[];
+      primaryImageIndex: number;
+    }
+  ) => {
+    const formData = new FormData();
+    formData.append('name', payload.name);
+    formData.append('brand', payload.brand);
+    formData.append('material', payload.material);
+    formData.append('description', payload.description);
+    formData.append('base_price', payload.basePrice);
+    formData.append('discount_percent', payload.discountPercent || '0');
+    formData.append('categoryId', payload.categoryId);
+    formData.append('color', payload.color);
+    formData.append('primaryImageIndex', String(payload.primaryImageIndex));
+    payload.genderIds.forEach((id) => formData.append('genderIds', String(id)));
+    formData.append('sizes', JSON.stringify(payload.sizes));
+    payload.images.forEach((file) => formData.append('images', file));
+
+    return request<Product>(`/api/admin/products/${productId}/`, {
+      method: 'PATCH',
+      headers: {
+        ...getAuthHeaders(token),
+      },
+      body: formData,
+    }).then(normalizeProduct);
+  },
+
+  deleteProduct: async (token: string, productId: string) =>
+    request<void>(`/api/admin/products/${productId}/`, {
+      method: 'DELETE',
+      headers: {
+        ...getAuthHeaders(token),
+      },
+    }),
+
+  getOrders: async (token: string) =>
+    request<AdminOrder[]>('/api/admin/orders/', {
+      headers: {
+        ...getAuthHeaders(token),
+      },
+    }),
+
+  updateOrderStatus: async (token: string, orderId: number, status: string) =>
+    request<AdminOrder>(`/api/admin/orders/${orderId}/`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(token),
+      },
+      body: JSON.stringify({ status }),
+    }),
+
+  getUsers: async (token: string) =>
+    request<AdminUser[]>('/api/admin/users/', {
+      headers: {
+        ...getAuthHeaders(token),
+      },
+    }),
+
+  updateUserRole: async (token: string, userId: number, role: string) =>
+    request<AdminUser>(`/api/admin/users/${userId}/`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(token),
+      },
+      body: JSON.stringify({ role }),
+    }),
+
+  downloadSalesReport: async (token: string, start: string, end: string) => {
+    const searchParams = new URLSearchParams({ start, end });
+    return requestFile(`/api/admin/reports/sales/?${searchParams.toString()}`, {
+      headers: {
+        ...getAuthHeaders(token),
+      },
+    });
   },
 };

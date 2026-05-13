@@ -1,0 +1,14 @@
+Здравствуйте, {{ customer_name }}!
+
+Спасибо за заказ в Fashion Store.
+
+Чек по заказу #{{ order.id }}
+Дата: {{ created_at }}
+Адрес доставки: {{ order.shipping_address }}
+
+Состав заказа:
+{% for item in items %}- {{ item.brand }} {{ item.name }}, размер {{ item.size }} — {{ item.quantity }} шт. x {{ item.price }} = {{ item.line_total }}
+{% endfor %}
+Итого: {{ total }}
+
+Мы сообщим, когда заказ перейдет к обработке.

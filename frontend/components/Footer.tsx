@@ -9,8 +9,8 @@ export default function Footer() {
         <div className="flex flex-col md:items-end">
           <h4 className="text-xl font-semibold mb-8 tracking-wider">Социальные сети</h4>
           <div className="space-y-2 opacity-70 text-lg">
-            <p>Instagram: <a href="#" className="underline">Mystore</a></p>
-            <p>VK: <a href="#" className="underline">Mystore</a></p>
+            <p>Instagram: <a href="#" className="underline">fashion store</a></p>
+            <p>VK: <a href="#" className="underline">fashion store</a></p>
           </div>
         </div>
 
@@ -27,14 +27,14 @@ export default function Footer() {
         <div className="flex flex-col md:items-start">
           <h4 className="text-xl font-semibold mb-8 tracking-wider">Контакты</h4>
           <div className="space-y-2 opacity-70 text-lg">
-            <p>Email: support@mystore.com</p>
+            <p>Email: support@fashionstore.com</p>
             <p>Тел: +7 (900) 000-00-00</p>
           </div>
         </div>
       </div>
 
       <div className="mt-16 text-center pt-8 border-t border-gray-50 opacity-60 text-base">
-        <p>© 2025 VOID. Store. Все права защищены.</p>
+        <p>© 2025 fashion store. Все права защищены.</p>
       </div>
     </footer>
   );

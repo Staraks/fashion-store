@@ -69,7 +69,7 @@ export default function Checkout() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <input
                 type="text"
-                value={user.name}
+                value={user.username}
                 readOnly
                 className="w-full border-b border-gray-200 py-3 text-sm bg-transparent outline-none"
               />

@@ -12,6 +12,8 @@ import FavoritesPage from './pages/FavoritesPage';
 import Checkout from './pages/Checkout';
 import AuthPage from './pages/AuthPage';
 import AdminPage from './pages/AdminPage';
+import ProfilePage from './pages/ProfilePage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import { AppProvider } from './store/AppContext';
 
 export default function App() {
@@ -32,6 +34,9 @@ export default function App() {
               <Route path="/favorites" element={<FavoritesPage />} />
               <Route path="/checkout" element={<Checkout />} />
               <Route path="/auth" element={<AuthPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
               <Route path="/admin" element={<AdminPage />} />
               {/* Alias for provided snippet links */}
               <Route path="/women" element={<Navigate to="/catalog?category=women" replace />} />

@@ -20,6 +20,7 @@ interface AppContextType {
   isFavorite: (productId: string) => boolean;
   clearCart: () => void;
   setAuthSession: (token: string, user: AuthUser) => Promise<void>;
+  setCurrentUser: (user: AuthUser | null) => void;
   logout: () => Promise<void>;
   placeOrder: (shippingAddress: string) => Promise<number>;
   cartTotal: number;
@@ -122,6 +123,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setFavorites(syncedState.favorites);
   };
 
+  const setCurrentUser = (nextUser: AuthUser | null) => {
+    setUser(nextUser);
+  };
+
   const logout = async () => {
     if (authToken) {
       try {
@@ -207,6 +212,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isFavorite,
         clearCart,
         setAuthSession,
+        setCurrentUser,
         logout,
         placeOrder,
         cartTotal,
