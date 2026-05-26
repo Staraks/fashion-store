@@ -67,6 +67,9 @@ export interface UserOrder {
   id: number;
   status: string;
   totalAmount: number;
+  paymentMethod: string;
+  paymentStatus: string;
+  paymentId: string;
   shippingAddress: string;
   createdAt: string;
   itemsCount: number;

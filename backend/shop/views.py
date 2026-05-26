@@ -267,7 +267,7 @@ def login_user(request):
 
     if not user:
         return Response(
-            {"detail": "Invalid username, email, or password."},
+            {"detail": "Неверная почта, имя пользователя или пароль."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -505,6 +505,9 @@ def create_order(request):
             total_amount=total_amount,
             shipping_address=serializer.validated_data["shipping_address"],
             status="new",
+            payment_method="mock_card",
+            payment_status="paid",
+            payment_id=f"mock_{uuid.uuid4().hex[:12]}",
         )
 
         OrderDetail.objects.bulk_create(
@@ -527,7 +530,10 @@ def create_order(request):
         CartItem.objects.filter(cart=cart).delete()
         transaction.on_commit(lambda order_id=order.id: send_order_receipt_email(order_id))
 
-    return Response({"orderId": order.id}, status=status.HTTP_201_CREATED)
+    return Response(
+        {"orderId": order.id, "paymentId": order.payment_id},
+        status=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(["GET"])

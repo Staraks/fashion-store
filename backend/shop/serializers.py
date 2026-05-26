@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.db import transaction
@@ -14,6 +15,24 @@ from .models import Category, Gender, Order, OrderDetail, Product, ProductImage,
 User = get_user_model()
 
 ADMIN_ROLE_CHOICES = ("user", "content_manager", "sales_manager", "admin")
+
+PASSWORD_ERROR_MESSAGES = {
+    "password_too_similar": "Пароль слишком похож на ваши личные данные.",
+    "password_too_short": "Пароль должен содержать минимум 8 символов.",
+    "password_too_common": "Этот пароль слишком простой. Придумайте более сложный пароль.",
+    "password_entirely_numeric": "Пароль не должен состоять только из цифр.",
+}
+
+
+def validate_password_ru(password, user):
+    try:
+        validate_password(password, user)
+    except DjangoValidationError as error:
+        messages = [
+            PASSWORD_ERROR_MESSAGES.get(item.code, item.message)
+            for item in error.error_list
+        ]
+        raise serializers.ValidationError(messages)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -48,8 +67,37 @@ class AdminUserRoleUpdateSerializer(serializers.Serializer):
 
 
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=8)
-    password_confirm = serializers.CharField(write_only=True, min_length=8)
+    username = serializers.CharField(
+        error_messages={
+            "required": "Введите имя пользователя.",
+            "blank": "Введите имя пользователя.",
+        }
+    )
+    email = serializers.EmailField(
+        error_messages={
+            "required": "Введите электронную почту.",
+            "blank": "Введите электронную почту.",
+            "invalid": "Введите корректную электронную почту.",
+        }
+    )
+    password = serializers.CharField(
+        write_only=True,
+        min_length=8,
+        error_messages={
+            "required": "Введите пароль.",
+            "blank": "Введите пароль.",
+            "min_length": "Пароль должен содержать минимум 8 символов.",
+        },
+    )
+    password_confirm = serializers.CharField(
+        write_only=True,
+        min_length=8,
+        error_messages={
+            "required": "Повторите пароль.",
+            "blank": "Повторите пароль.",
+            "min_length": "Подтверждение пароля должно содержать минимум 8 символов.",
+        },
+    )
 
     class Meta:
         model = User
@@ -58,26 +106,29 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate_email(self, value):
         email = value.strip().lower()
         if User.objects.filter(email__iexact=email).exists():
-            raise serializers.ValidationError("A user with this email already exists.")
+            raise serializers.ValidationError("Пользователь с такой почтой уже существует.")
         return email
 
     def validate_username(self, value):
         username = value.strip()
         if not username:
-            raise serializers.ValidationError("Username is required.")
+            raise serializers.ValidationError("Введите имя пользователя.")
         if User.objects.filter(username__iexact=username).exists():
-            raise serializers.ValidationError("A user with this username already exists.")
+            raise serializers.ValidationError("Пользователь с таким именем уже существует.")
         return username
 
     def validate(self, attrs):
         if attrs["password"] != attrs["password_confirm"]:
-            raise serializers.ValidationError({"password_confirm": "Passwords do not match."})
+            raise serializers.ValidationError({"password_confirm": "Пароли не совпадают."})
 
         draft_user = User(
             email=attrs["email"],
             username=attrs["username"],
         )
-        validate_password(attrs["password"], draft_user)
+        try:
+            validate_password_ru(attrs["password"], draft_user)
+        except serializers.ValidationError as error:
+            raise serializers.ValidationError({"password": error.detail})
         return attrs
 
     def create(self, validated_data):
@@ -95,8 +146,20 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class LoginSerializer(serializers.Serializer):
-    identifier = serializers.CharField()
-    password = serializers.CharField(write_only=True, trim_whitespace=False)
+    identifier = serializers.CharField(
+        error_messages={
+            "required": "Введите почту или имя пользователя.",
+            "blank": "Введите почту или имя пользователя.",
+        }
+    )
+    password = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+        error_messages={
+            "required": "Введите пароль.",
+            "blank": "Введите пароль.",
+        },
+    )
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
@@ -208,6 +271,9 @@ class OrderSerializer(serializers.ModelSerializer):
     totalAmount = serializers.SerializerMethodField()
     shippingAddress = serializers.CharField(source="shipping_address")
     createdAt = serializers.DateTimeField(source="created_at")
+    paymentMethod = serializers.CharField(source="payment_method")
+    paymentStatus = serializers.CharField(source="payment_status")
+    paymentId = serializers.CharField(source="payment_id")
     items = OrderItemSerializer(source="orderdetail_set", many=True)
     itemsCount = serializers.SerializerMethodField()
 
@@ -217,6 +283,9 @@ class OrderSerializer(serializers.ModelSerializer):
             "id",
             "status",
             "totalAmount",
+            "paymentMethod",
+            "paymentStatus",
+            "paymentId",
             "shippingAddress",
             "createdAt",
             "itemsCount",

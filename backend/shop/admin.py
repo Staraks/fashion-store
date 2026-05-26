@@ -70,7 +70,7 @@ class FavoriteAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "total_amount", "status", "date", "created_at")
+    list_display = ("id", "user", "total_amount", "status", "payment_status", "payment_id", "date", "created_at")
     readonly_fields = ("date", "created_at")
 
 

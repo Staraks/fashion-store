@@ -14,17 +14,31 @@ function getAuthHeaders(token?: string) {
     : {};
 }
 
+const ERROR_FIELD_LABELS: Record<string, string> = {
+  detail: '',
+  email: 'Почта',
+  identifier: 'Почта или имя пользователя',
+  username: 'Имя пользователя',
+  password: 'Пароль',
+  password_confirm: 'Подтверждение пароля',
+  non_field_errors: '',
+};
+
 function extractErrorMessage(errorBody: unknown, parentKey?: string): string | null {
   if (!errorBody) {
     return null;
   }
 
   if (typeof errorBody === 'string') {
-    return parentKey ? `${parentKey}: ${errorBody}` : errorBody;
+    const fieldLabel = parentKey ? ERROR_FIELD_LABELS[parentKey] ?? parentKey : '';
+    return fieldLabel ? `${fieldLabel}: ${errorBody}` : errorBody;
   }
 
   if (Array.isArray(errorBody)) {
-    return errorBody.map((item) => extractErrorMessage(item, parentKey)).filter(Boolean).join(' ');
+    const messages = errorBody.map((item) => extractErrorMessage(item)).filter(Boolean);
+    const fieldLabel = parentKey ? ERROR_FIELD_LABELS[parentKey] ?? parentKey : '';
+    const message = messages.join(' ');
+    return fieldLabel && message ? `${fieldLabel}: ${message}` : message;
   }
 
   if (typeof errorBody === 'object') {
@@ -328,7 +342,7 @@ export const accountAPI = {
 
 export const ordersAPI = {
   create: async (token: string, payload: { shipping_address: string }) =>
-    request<{ orderId: number }>('/api/orders/', {
+    request<{ orderId: number; paymentId: string }>('/api/orders/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -203,7 +203,7 @@ export default function ProfilePage() {
                     <p className="text-sm text-gray-500">{formatOrderDate(order.createdAt)}</p>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-4">
                     <div>
                       <p className="mb-1 uppercase tracking-[0.2em] text-gray-400">Позиции</p>
                       <p className="font-semibold">{order.itemsCount}</p>
@@ -211,6 +211,12 @@ export default function ProfilePage() {
                     <div>
                       <p className="mb-1 uppercase tracking-[0.2em] text-gray-400">Сумма</p>
                       <p className="font-semibold">{order.totalAmount.toLocaleString()} ₽</p>
+                    </div>
+                    <div>
+                      <p className="mb-1 uppercase tracking-[0.2em] text-gray-400">Оплата</p>
+                      <p className="font-semibold">
+                        {order.paymentStatus === 'paid' ? 'Оплачено' : order.paymentStatus}
+                      </p>
                     </div>
                     <div>
                       <p className="mb-1 uppercase tracking-[0.2em] text-gray-400">Доставка</p>

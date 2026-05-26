@@ -195,6 +195,9 @@ class Order(models.Model):
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)
     date = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=50, default='new')
+    payment_method = models.CharField(max_length=50, default='mock_card')
+    payment_status = models.CharField(max_length=50, default='paid')
+    payment_id = models.CharField(max_length=100, blank=True)
     shipping_address = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

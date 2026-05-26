@@ -1290,7 +1290,7 @@ export default function AdminPage() {
                           </div>
                         </div>
 
-                        <div className="grid gap-3 text-sm md:grid-cols-3">
+                        <div className="grid gap-3 text-sm md:grid-cols-4">
                           <div className="rounded-2xl bg-neutral-50 px-4 py-3">
                             <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">
                               Статус
@@ -1306,6 +1306,16 @@ export default function AdminPage() {
                             </p>
                             <p className="mt-1 font-medium">
                               {order.itemsCount}
+                            </p>
+                          </div>
+                          <div className="rounded-2xl bg-neutral-50 px-4 py-3">
+                            <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">
+                              Оплата
+                            </p>
+                            <p className="mt-1 font-medium">
+                              {order.paymentStatus === "paid"
+                                ? "Оплачено"
+                                : order.paymentStatus}
                             </p>
                           </div>
                           <div className="rounded-2xl bg-neutral-50 px-4 py-3">
