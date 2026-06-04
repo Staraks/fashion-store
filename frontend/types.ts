@@ -41,8 +41,21 @@ export interface ProductReview {
   avatarUrl?: string | null;
   rating: number;
   comment: string;
+  status?: 'pending' | 'approved' | 'rejected';
   created_at: string;
   updated_at: string;
+}
+
+export interface AdminReview extends ProductReview {
+  status: 'pending' | 'approved' | 'rejected';
+  productId: number;
+  productName: string;
+  productBrand: string;
+  productPrice: number;
+  productImage?: string | null;
+  userEmail: string;
+  moderatedBy?: string | null;
+  moderatedAt?: string | null;
 }
 
 export interface ProductReviewSummary {

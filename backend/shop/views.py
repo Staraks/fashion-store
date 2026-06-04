@@ -27,6 +27,8 @@ from .serializers import (
     AccountStateSyncSerializer,
     AdminOrderSerializer,
     AdminProductDetailSerializer,
+    AdminReviewSerializer,
+    AdminReviewStatusUpdateSerializer,
     AdminUserRoleUpdateSerializer,
     AdminUserSerializer,
     LoginSerializer,
@@ -313,6 +315,7 @@ def _user_can_manage_admin(user):
     return any(
         [
             _user_can_manage_catalog(user),
+            _user_can_moderate_reviews(user),
             _user_can_manage_orders(user),
             _user_can_view_reports(user),
         ]
@@ -324,6 +327,10 @@ def _user_is_admin(user):
 
 
 def _user_can_manage_catalog(user):
+    return bool(user and user.is_authenticated and (_user_is_admin(user) or user.role == "content_manager"))
+
+
+def _user_can_moderate_reviews(user):
     return bool(user and user.is_authenticated and (_user_is_admin(user) or user.role == "content_manager"))
 
 
@@ -681,6 +688,48 @@ def admin_product_detail_manage(request, product_id):
     updated_product = serializer.save()
     updated_product = _get_product_queryset().get(id=updated_product.id)
     return Response(_serialize_product(updated_product, request, _get_featured_ids()))
+
+
+def _get_admin_review_queryset():
+    return (
+        Review.objects.select_related("user", "product", "moderated_by")
+        .order_by("-updated_at", "-created_at")
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def admin_reviews(request):
+    if not _user_can_moderate_reviews(request.user):
+        return _admin_forbidden_response()
+
+    review_status = request.query_params.get("status")
+    reviews = _get_admin_review_queryset()
+    if review_status:
+        reviews = reviews.filter(status=review_status)
+
+    return Response(AdminReviewSerializer(reviews, many=True, context={"request": request}).data)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def admin_review_detail_manage(request, review_id):
+    if not _user_can_moderate_reviews(request.user):
+        return _admin_forbidden_response()
+
+    review = _get_admin_review_queryset().filter(id=review_id).first()
+    if not review:
+        return Response({"detail": "Review not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = AdminReviewStatusUpdateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    review.status = serializer.validated_data["status"]
+    review.moderated_by = request.user
+    review.moderated_at = timezone.now()
+    review.save(update_fields=["status", "moderated_by", "moderated_at", "updated_at"])
+
+    return Response(AdminReviewSerializer(review, context={"request": request}).data)
 
 
 def _get_admin_order_queryset():
@@ -1078,7 +1127,7 @@ def product_reviews(request, product_id):
 
     if request.method == "GET":
         reviews = (
-            Review.objects.filter(product_id=product_id)
+            Review.objects.filter(product_id=product_id, status=Review.STATUS_APPROVED)
             .select_related("user")
             .order_by("-updated_at", "-created_at")
         )
@@ -1104,6 +1153,9 @@ def product_reviews(request, product_id):
         defaults={
             "rating": serializer.validated_data["rating"],
             "comment": serializer.validated_data.get("comment", "").strip(),
+            "status": Review.STATUS_PENDING,
+            "moderated_by": None,
+            "moderated_at": None,
         },
     )
 

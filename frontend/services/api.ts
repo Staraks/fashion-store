@@ -1,4 +1,4 @@
-import { AccountState, AdminCatalogOptions, AdminOrder, AdminProductDetail, AdminUser, AuthResponse, AuthUser, Product, ProductFilterOptions, ProductReviewSummary, UserOrder } from '../types';
+import { AccountState, AdminCatalogOptions, AdminOrder, AdminProductDetail, AdminReview, AdminUser, AuthResponse, AuthUser, Product, ProductFilterOptions, ProductReviewSummary, UserOrder } from '../types';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
@@ -491,6 +491,29 @@ export const adminAPI = {
       headers: {
         ...getAuthHeaders(token),
       },
+    }),
+
+  getReviews: async (token: string, status?: string) => {
+    const searchParams = new URLSearchParams();
+    if (status) {
+      searchParams.set('status', status);
+    }
+
+    return request<AdminReview[]>(`/api/admin/reviews/${searchParams.toString() ? `?${searchParams.toString()}` : ''}`, {
+      headers: {
+        ...getAuthHeaders(token),
+      },
+    });
+  },
+
+  updateReviewStatus: async (token: string, reviewId: number, status: 'approved' | 'rejected') =>
+    request<AdminReview>(`/api/admin/reviews/${reviewId}/`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(token),
+      },
+      body: JSON.stringify({ status }),
     }),
 
   getOrders: async (token: string) =>

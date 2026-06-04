@@ -358,6 +358,48 @@ class ReviewSerializer(serializers.ModelSerializer):
         return request.build_absolute_uri(url) if request else url
 
 
+class AdminReviewSerializer(ReviewSerializer):
+    productId = serializers.IntegerField(source="product_id", read_only=True)
+    productName = serializers.CharField(source="product.name", read_only=True)
+    productBrand = serializers.CharField(source="product.brand", read_only=True)
+    productPrice = serializers.SerializerMethodField()
+    productImage = serializers.SerializerMethodField()
+    userEmail = serializers.CharField(source="user.email", read_only=True)
+    moderatedBy = serializers.CharField(source="moderated_by.email", read_only=True, allow_null=True)
+    moderatedAt = serializers.DateTimeField(source="moderated_at", read_only=True)
+
+    class Meta(ReviewSerializer.Meta):
+        fields = ReviewSerializer.Meta.fields + [
+            "status",
+            "productId",
+            "productName",
+            "productBrand",
+            "productPrice",
+            "productImage",
+            "userEmail",
+            "moderatedBy",
+            "moderatedAt",
+        ]
+
+    def get_productPrice(self, obj):
+        discount = obj.product.discount_percent or Decimal("0")
+        final_price = obj.product.base_price * (Decimal("100") - discount) / Decimal("100")
+        return int(final_price.quantize(Decimal("1")))
+
+    def get_productImage(self, obj):
+        image = obj.product.images.all().order_by("-is_primary", "sort_order", "id").first()
+        if not image:
+            return None
+
+        request = self.context.get("request")
+        url = image.image.url
+        return request.build_absolute_uri(url) if request else url
+
+
+class AdminReviewStatusUpdateSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=[Review.STATUS_APPROVED, Review.STATUS_REJECTED])
+
+
 class ProductCreateSizeSerializer(serializers.Serializer):
     sizeId = serializers.IntegerField()
     stockQuantity = serializers.IntegerField(min_value=0)

@@ -1,5 +1,5 @@
 import React, { FormEvent, useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 
 import { adminAPI } from "../services/api";
 import { useAppContext } from "../store/AppContext";
@@ -7,6 +7,7 @@ import {
   AdminCatalogOptions,
   AdminOrder,
   AdminProductDetail,
+  AdminReview,
   AdminUser,
   Product,
 } from "../types";
@@ -42,6 +43,11 @@ const ADMIN_SECTIONS: Array<{
     label: "Каталог",
     description: "Товары, остатки и изображения",
   },
+  {
+    id: "reviews",
+    label: "Отзывы",
+    description: "Модерация публикаций",
+  },
   { id: "orders", label: "Заказы", description: "Просмотр и статусы" },
   { id: "reports", label: "Отчётность", description: "Excel по продажам" },
   {
@@ -76,6 +82,12 @@ const ORDER_STATUS_LABELS = Object.fromEntries(
     statusOption.label,
   ]),
 );
+
+const REVIEW_STATUS_LABELS: Record<AdminReview["status"], string> = {
+  pending: "На модерации",
+  approved: "Одобрен",
+  rejected: "Отклонен",
+};
 
 function formatAdminOrderDate(value: string) {
   return new Date(value).toLocaleString("ru-RU", {
@@ -134,6 +146,7 @@ export default function AdminPage() {
   const [activeSection, setActiveSection] = useState<AdminSectionId>("catalog");
   const [options, setOptions] = useState<AdminCatalogOptions | null>(null);
   const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
+  const [reviews, setReviews] = useState<AdminReview[]>([]);
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [reportStartDate, setReportStartDate] = useState(
@@ -162,6 +175,7 @@ export default function AdminPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
+  const [isLoadingReviews, setIsLoadingReviews] = useState(true);
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [isLoadingEditor, setIsLoadingEditor] = useState(false);
@@ -169,6 +183,7 @@ export default function AdminPage() {
     null,
   );
   const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
+  const [updatingReviewId, setUpdatingReviewId] = useState<number | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
   const [isDownloadingReport, setIsDownloadingReport] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -182,6 +197,7 @@ export default function AdminPage() {
     [user],
   );
   const canManageCatalog = canAccessAdminSection(user, "catalog");
+  const canManageReviews = canAccessAdminSection(user, "reviews");
   const canManageOrders = canAccessAdminSection(user, "orders");
   const canViewReports = canAccessAdminSection(user, "reports");
   const canManageUsers = canAccessAdminSection(user, "users");
@@ -320,6 +336,7 @@ export default function AdminPage() {
     if (!authToken || !canManageAdmin) {
       setIsLoadingOptions(false);
       setIsLoadingCatalog(false);
+      setIsLoadingReviews(false);
       setIsLoadingOrders(false);
       setIsLoadingUsers(false);
       return;
@@ -352,6 +369,21 @@ export default function AdminPage() {
     } else {
       setIsLoadingOptions(false);
       setIsLoadingCatalog(false);
+    }
+
+    if (canManageReviews) {
+      setIsLoadingReviews(true);
+      adminAPI
+        .getReviews(authToken, "pending")
+        .then(setReviews)
+        .catch((e) => {
+          setError(
+            e instanceof Error ? e.message : "Не удалось загрузить отзывы на модерации.",
+          );
+        })
+        .finally(() => setIsLoadingReviews(false));
+    } else {
+      setIsLoadingReviews(false);
     }
 
     if (canManageOrders) {
@@ -389,6 +421,7 @@ export default function AdminPage() {
     authToken,
     canManageAdmin,
     canManageCatalog,
+    canManageReviews,
     canManageOrders,
     canManageUsers,
     catalogFilters,
@@ -419,6 +452,11 @@ export default function AdminPage() {
     setOptions(await adminAPI.getCatalogOptions(authToken));
   };
 
+  const loadReviews = async () => {
+    if (!authToken) return;
+    setReviews(await adminAPI.getReviews(authToken, "pending"));
+  };
+
   const loadOrders = async () => {
     if (!authToken) return;
     setOrders(await adminAPI.getOrders(authToken));
@@ -427,6 +465,35 @@ export default function AdminPage() {
   const loadAdminUsers = async () => {
     if (!authToken) return;
     setAdminUsers(await adminAPI.getUsers(authToken));
+  };
+
+  const handleReviewStatusChange = async (
+    reviewId: number,
+    nextStatus: "approved" | "rejected",
+  ) => {
+    if (!authToken) return;
+
+    setUpdatingReviewId(reviewId);
+    setError(null);
+    setSuccess(null);
+    try {
+      const updatedReview = await adminAPI.updateReviewStatus(
+        authToken,
+        reviewId,
+        nextStatus,
+      );
+      setReviews((prev) => prev.filter((review) => review.id !== reviewId));
+      setSuccess(
+        `Отзыв к товару "${updatedReview.productName}" ${nextStatus === "approved" ? "одобрен" : "отклонен"}.`,
+      );
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Не удалось обновить статус отзыва.",
+      );
+      await loadReviews();
+    } finally {
+      setUpdatingReviewId(null);
+    }
   };
 
   const handleOrderStatusChange = async (
@@ -751,7 +818,7 @@ export default function AdminPage() {
             {success}
           </div>
         ) : null}
-        <nav className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <nav className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {availableAdminSections.map((section) => {
             const isActive = currentSection === section.id;
             return (
@@ -1230,6 +1297,143 @@ export default function AdminPage() {
               </div>
             </form>
           )
+        ) : null}
+        {currentSection === "reviews" ? (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-neutral-500">
+                  Отзывы
+                </p>
+                <h2 className="mt-2 text-2xl font-light">
+                  Модерация отзывов
+                </h2>
+              </div>
+              <span className="text-sm text-neutral-500">
+                {isLoadingReviews
+                  ? "Загрузка..."
+                  : `Ожидают проверки: ${reviews.length}`}
+              </span>
+            </div>
+
+            {isLoadingReviews ? (
+              <div className="rounded-3xl border border-neutral-200 bg-neutral-50 px-6 py-8 text-sm text-neutral-600">
+                Загружаю отзывы на модерации...
+              </div>
+            ) : reviews.length === 0 ? (
+              <div className="rounded-3xl border border-neutral-200 bg-neutral-50 px-6 py-8 text-sm text-neutral-600">
+                Сейчас нет отзывов, ожидающих модерации.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {reviews.map((review) => (
+                  <article
+                    key={review.id}
+                    className="rounded-[2rem] border border-neutral-200 bg-white p-5 md:p-6"
+                  >
+                    <div className="grid gap-5 lg:grid-cols-[1fr_220px]">
+                      <div className="space-y-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.25em] text-neutral-500">
+                              {review.productBrand || "Без бренда"}
+                            </p>
+                            <h3 className="mt-2 text-xl font-medium">
+                              {review.productName}
+                            </h3>
+                            <p className="mt-1 text-sm text-neutral-500">
+                              {review.username || review.userEmail} ·{" "}
+                              {formatAdminOrderDate(review.updated_at)}
+                            </p>
+                          </div>
+                          <div className="text-left md:text-right">
+                            <p className="text-sm text-neutral-500">Оценка</p>
+                            <p className="text-2xl font-medium">
+                              {review.rating}/5
+                            </p>
+                          </div>
+                        </div>
+
+                        <p className="rounded-[1.5rem] bg-neutral-50 px-4 py-4 text-sm leading-7 text-neutral-700">
+                          {review.comment || "Пользователь оставил только оценку."}
+                        </p>
+
+                        <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-neutral-500">
+                          <span className="rounded-full border border-neutral-200 px-3 py-2">
+                            {REVIEW_STATUS_LABELS[review.status]}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-col gap-4 rounded-[1.5rem] border border-neutral-200 p-4 sm:flex-row sm:items-center">
+                          <Link
+                            to={`/product/${review.productId}`}
+                            className="block h-28 w-24 shrink-0 overflow-hidden rounded-2xl bg-neutral-100"
+                          >
+                            {review.productImage ? (
+                              <img
+                                src={review.productImage}
+                                alt={review.productName}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : null}
+                          </Link>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">
+                              Товар
+                            </p>
+                            <Link
+                              to={`/product/${review.productId}`}
+                              className="mt-2 block text-lg font-medium hover:opacity-70"
+                            >
+                              {review.productName}
+                            </Link>
+                            <p className="mt-1 text-sm text-neutral-500">
+                              {review.productBrand || "Без бренда"} ·{" "}
+                              {review.productPrice.toLocaleString()} ₽
+                            </p>
+                          </div>
+                          <Link
+                            to={`/product/${review.productId}`}
+                            className="rounded-full border border-neutral-300 px-4 py-3 text-center text-xs uppercase tracking-[0.2em] text-neutral-700 transition-colors hover:border-black"
+                          >
+                            Открыть товар
+                          </Link>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-3 rounded-[1.5rem] bg-neutral-50 p-4">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleReviewStatusChange(review.id, "approved")
+                          }
+                          disabled={updatingReviewId === review.id}
+                          className="rounded-full bg-black px-5 py-3 text-xs uppercase tracking-[0.2em] text-white transition-opacity hover:opacity-85 disabled:opacity-50"
+                        >
+                          Одобрить
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleReviewStatusChange(review.id, "rejected")
+                          }
+                          disabled={updatingReviewId === review.id}
+                          className="rounded-full border border-neutral-300 px-5 py-3 text-xs uppercase tracking-[0.2em] text-neutral-700 transition-colors hover:border-black disabled:opacity-50"
+                        >
+                          Отклонить
+                        </button>
+                        {updatingReviewId === review.id ? (
+                          <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">
+                            Сохраняю...
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
         ) : null}
         {currentSection === "orders" ? (
           <section className="space-y-4">

@@ -58,8 +58,10 @@ class ProductImageAdmin(admin.ModelAdmin):
 
 @admin.register(Review)
 class ReviewAdmin(admin.ModelAdmin):
-    list_display = ("user", "product", "rating", "created_at", "updated_at")
-    readonly_fields = ("created_at", "updated_at")
+    list_display = ("user", "product", "rating", "status", "moderated_by", "moderated_at", "created_at", "updated_at")
+    list_filter = ("status", "rating")
+    search_fields = ("user__email", "user__username", "product__name", "comment")
+    readonly_fields = ("created_at", "updated_at", "moderated_at")
 
 
 @admin.register(Favorite)

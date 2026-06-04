@@ -31,6 +31,7 @@ export default function ProductDetail() {
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewError, setReviewError] = useState('');
+  const [reviewSuccess, setReviewSuccess] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const reviewsSectionRef = useRef<HTMLElement | null>(null);
 
@@ -114,6 +115,7 @@ export default function ProductDetail() {
 
     setReviewSubmitting(true);
     setReviewError('');
+    setReviewSuccess('');
 
     try {
       await productsAPI.createReview(authToken, id, {
@@ -123,6 +125,7 @@ export default function ProductDetail() {
 
       const summary = await productsAPI.getReviews(id);
       setReviewSummary(summary);
+      setReviewSuccess('Отзыв отправлен на модерацию и появится после одобрения.');
     } catch (error) {
       setReviewError(error instanceof Error ? error.message : 'Не удалось сохранить отзыв.');
     } finally {
@@ -357,6 +360,7 @@ export default function ProductDetail() {
               </div>
 
               {reviewError ? <p className="text-sm text-red-600">{reviewError}</p> : null}
+              {reviewSuccess ? <p className="text-sm text-emerald-700">{reviewSuccess}</p> : null}
 
               <button
                 type="submit"

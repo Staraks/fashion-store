@@ -1,10 +1,101 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Star } from "lucide-react";
+import { RotateCcw, Star } from "lucide-react";
 
 import { productsAPI } from "../services/api";
 import { Product, ProductFilterOptions, ProductReviewSummary } from "../types";
 import { getCategoryLabel } from "../utils/categoryLabels";
+
+type FilterCategoryOption = ProductFilterOptions["categories"][number];
+
+const CATEGORY_GROUPS = [
+  {
+    id: "tops",
+    label: "\u0412\u0435\u0440\u0445",
+    keywords: [
+      "\u0444\u0443\u0442\u0431\u043e\u043b",
+      "\u0445\u0443\u0434\u0438",
+      "\u043b\u043e\u043d\u0433\u0441\u043b\u0438\u0432",
+      "\u0434\u0436\u0435\u043c\u043f\u0435\u0440",
+      "\u0441\u0432\u0438\u0442\u0435\u0440",
+      "\u043a\u0430\u0440\u0434\u0438\u0433\u0430\u043d",
+      "\u043f\u0438\u0434\u0436\u0430\u043a",
+      "\u0440\u0443\u0431\u0430\u0448",
+      "\u0432\u0435\u0440\u0445\u043d",
+      "hoodie",
+      "longsleeve",
+      "long sleeve",
+      "t-shirt",
+      "tee",
+      "jumper",
+      "sweater",
+      "cardigan",
+      "blazer",
+      "jacket",
+      "shirt",
+      "outerwear",
+    ],
+  },
+  {
+    id: "bottoms",
+    label: "\u041d\u0438\u0437",
+    keywords: [
+      "\u0434\u0436\u0438\u043d\u0441",
+      "\u0431\u0440\u044e\u043a",
+      "\u0448\u0442\u0430\u043d",
+      "jeans",
+      "pants",
+      "trousers",
+    ],
+  },
+  {
+    id: "shoes",
+    label: "\u041e\u0431\u0443\u0432\u044c",
+    keywords: [
+      "\u043e\u0431\u0443\u0432",
+      "\u0431\u043e\u0442\u0438\u043d",
+      "\u043a\u0440\u043e\u0441\u0441\u043e\u0432",
+      "\u043a\u0435\u0434",
+      "\u0442\u0443\u0444\u043b",
+      "shoes",
+      "sneakers",
+      "boots",
+      "loafers",
+    ],
+  },
+] as const;
+
+function getCategorySearchText(category: FilterCategoryOption) {
+  return `${category.name} ${category.slug}`.toLowerCase();
+}
+
+function groupCategories(categories: FilterCategoryOption[]) {
+  const grouped = CATEGORY_GROUPS.map((group) => ({
+    ...group,
+    categories: categories.filter((category) => {
+      const searchText = getCategorySearchText(category);
+      return group.keywords.some((keyword) => searchText.includes(keyword));
+    }),
+  })).filter((group) => group.categories.length > 0);
+
+  const groupedSlugs = new Set(
+    grouped.flatMap((group) => group.categories.map((category) => category.slug)),
+  );
+  const otherCategories = categories.filter(
+    (category) => !groupedSlugs.has(category.slug),
+  );
+
+  if (otherCategories.length > 0) {
+    grouped.push({
+      id: "other",
+      label: "\u0414\u0440\u0443\u0433\u043e\u0435",
+      keywords: [],
+      categories: otherCategories,
+    });
+  }
+
+  return grouped;
+}
 
 function ProductRating({
   averageRating,
@@ -161,8 +252,14 @@ export default function Catalog() {
       (item) => item.parentSlug === category,
     );
   }, [filterOptions.subcategories, category]);
+  const groupedCategories = useMemo(
+    () => groupCategories(filterOptions.categories),
+    [filterOptions.categories],
+  );
 
   const isVisualSearchActive = selectedImageName.length > 0;
+  const hasActiveFilters =
+    Boolean(category || subcategory || brand) || searchQuery.trim().length > 0;
   const baseProducts = isVisualSearchActive ? visualResults : products;
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const displayedProducts = useMemo(() => {
@@ -237,6 +334,16 @@ export default function Catalog() {
     setSearchParams(nextParams);
   };
 
+  const resetFilters = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("productCategory");
+    nextParams.delete("subcategory");
+    nextParams.delete("brand");
+
+    setSearchQuery("");
+    setSearchParams(nextParams);
+  };
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-12">
       <div className="mb-12 flex flex-col gap-8 border-b border-gray-100 pb-8 lg:flex-row lg:items-end lg:justify-between">
@@ -251,7 +358,7 @@ export default function Catalog() {
           </p>
         </div>
 
-        <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2 lg:max-w-5xl lg:grid-cols-4">
+        <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2 lg:max-w-6xl lg:grid-cols-5">
           <label className="text-xs uppercase tracking-[0.25em] text-gray-500 md:col-span-2 lg:col-span-1">
             Поиск
             <input
@@ -272,10 +379,17 @@ export default function Catalog() {
               className="mt-2 w-full border border-gray-200 bg-white px-4 py-3 text-sm text-black outline-none focus:border-black"
             >
               <option value="">Все категории</option>
-              {filterOptions.categories.map((item) => (
-                <option key={item.slug} value={item.slug}>
-                  {item.name}
-                </option>
+              {groupedCategories.map((group) => (
+                <React.Fragment key={group.id}>
+                  <option disabled value={`separator-${group.id}`}>
+                    {`──────── ${group.label} ────────`}
+                  </option>
+                  {group.categories.map((item) => (
+                    <option key={item.slug} value={item.slug}>
+                      {item.name}
+                    </option>
+                  ))}
+                </React.Fragment>
               ))}
             </select>
           </label>
@@ -313,6 +427,16 @@ export default function Catalog() {
               ))}
             </select>
           </label>
+
+          <button
+            type="button"
+            onClick={resetFilters}
+            disabled={!hasActiveFilters}
+            className="mt-6 inline-flex h-[46px] items-center justify-center gap-2 border border-black px-4 text-xs font-semibold uppercase tracking-[0.2em] text-black transition hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300 disabled:hover:bg-white disabled:hover:text-gray-300"
+          >
+            <RotateCcw size={16} aria-hidden="true" />
+            <span>{"\u0421\u0431\u0440\u043e\u0441"}</span>
+          </button>
         </div>
       </div>
 

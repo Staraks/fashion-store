@@ -174,11 +174,43 @@ class ShopCrudAndApiTests(TestCase):
         client = auth_client(user)
         response = client.post(f"/api/products/{product.id}/reviews/", {"rating": 5, "comment": "Love it"})
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(Review.objects.get(user=user, product=product).rating, 5)
+        review = Review.objects.get(user=user, product=product)
+        self.assertEqual(review.rating, 5)
+        self.assertEqual(review.status, Review.STATUS_PENDING)
+
+        response = self.client.get(f"/api/products/{product.id}/reviews/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["reviewsCount"], 0)
+
+        content_manager = create_user(
+            username="content_reviews",
+            email="content_reviews@example.com",
+            role="content_manager",
+        )
+        response = auth_client(content_manager).get("/api/admin/reviews/", {"status": Review.STATUS_PENDING})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data[0]["id"], review.id)
+        self.assertEqual(response.data[0]["productName"], product.name)
+
+        response = auth_client(content_manager).patch(
+            f"/api/admin/reviews/{review.id}/",
+            {"status": Review.STATUS_APPROVED},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        review.refresh_from_db()
+        self.assertEqual(review.status, Review.STATUS_APPROVED)
+        self.assertEqual(review.moderated_by, content_manager)
+
+        response = self.client.get(f"/api/products/{product.id}/reviews/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["reviewsCount"], 1)
 
         response = client.post(f"/api/products/{product.id}/reviews/", {"rating": 4, "comment": "Still good"})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Review.objects.get(user=user, product=product).rating, 4)
+        review.refresh_from_db()
+        self.assertEqual(review.rating, 4)
+        self.assertEqual(review.status, Review.STATUS_PENDING)
 
     def test_authentication_and_current_user_flow(self):
         register_payload = {
@@ -224,7 +256,9 @@ class ShopCrudAndApiTests(TestCase):
         admin = create_user(username="admin", email="admin@example.com", role="admin")
 
         self.assertEqual(auth_client(regular).get("/api/admin/catalog/options/").status_code, 403)
+        self.assertEqual(auth_client(regular).get("/api/admin/reviews/").status_code, 403)
         self.assertEqual(auth_client(content_manager).get("/api/admin/catalog/options/").status_code, 200)
+        self.assertEqual(auth_client(content_manager).get("/api/admin/reviews/").status_code, 200)
         self.assertEqual(auth_client(content_manager).get("/api/admin/orders/").status_code, 403)
         self.assertEqual(auth_client(sales_manager).get("/api/admin/orders/").status_code, 200)
         self.assertEqual(auth_client(sales_manager).get("/api/admin/users/").status_code, 403)
