@@ -34,7 +34,8 @@ class UserAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ("name", "brand", "base_price", "created_at", "updated_at")
+    list_display = ("name", "brand", "base_price", "is_visible", "created_at", "updated_at")
+    list_filter = ("is_visible",)
     readonly_fields = ("created_at", "updated_at")
 
 

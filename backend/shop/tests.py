@@ -62,10 +62,11 @@ def create_catalog_product(
     base_price=Decimal("1000.00"),
     discount_percent=Decimal("0.00"),
     stock_quantity=10,
+    is_visible=True,
 ):
-    gender = Gender.objects.create(name="male")
-    size = Size.objects.create(size_name="M")
-    category = Category.objects.create(name="Hoodies", slug="hoodies")
+    gender, _ = Gender.objects.get_or_create(name="male")
+    size, _ = Size.objects.get_or_create(size_name="M")
+    category, _ = Category.objects.get_or_create(name="Hoodies", slug="hoodies")
     product = Product.objects.create(
         name=name,
         brand=brand,
@@ -74,6 +75,7 @@ def create_catalog_product(
         base_price=base_price,
         discount_percent=discount_percent,
         category=category,
+        is_visible=is_visible,
     )
     ProductGender.objects.create(product=product, gender=gender)
     variant = ProductVariant.objects.create(product=product, color="black")
@@ -212,6 +214,28 @@ class ShopCrudAndApiTests(TestCase):
         self.assertEqual(review.rating, 4)
         self.assertEqual(review.status, Review.STATUS_PENDING)
 
+    def test_hidden_products_are_excluded_from_public_catalog_surfaces(self):
+        visible_data = create_catalog_product(name="Visible hoodie", brand="Acne")
+        hidden_data = create_catalog_product(name="Hidden hoodie", brand="Hidden", is_visible=False)
+        visible_product = visible_data["product"]
+        hidden_product = hidden_data["product"]
+
+        response = self.client.get("/api/products/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item["id"] for item in response.data], [str(visible_product.id)])
+
+        response = self.client.get(f"/api/products/{hidden_product.id}/")
+        self.assertEqual(response.status_code, 404)
+
+        response = self.client.get("/api/products/filters/", {"gender": "men"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Acne", response.data["brands"])
+        self.assertNotIn("Hidden", response.data["brands"])
+
+        response = self.client.get("/api/products/bestsellers/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(str(hidden_product.id), [item["id"] for item in response.data])
+
     def test_authentication_and_current_user_flow(self):
         register_payload = {
             "username": "newuser",
@@ -304,12 +328,21 @@ class ShopCrudAndApiTests(TestCase):
         response = client.get(f"/api/admin/products/{product_id}/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["brand"], "Zegna")
+        self.assertTrue(response.data["isVisible"])
+
+        response = client.patch(f"/api/admin/products/{product_id}/", {"isVisible": False}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["isVisible"])
+        self.assertFalse(Product.objects.get(id=product_id).is_visible)
+        self.assertEqual(self.client.get(f"/api/products/{product_id}/").status_code, 404)
 
         payload["name"] = "Updated wool coat"
         payload["sizes"] = json.dumps([{"sizeId": size.id, "stockQuantity": 7}])
+        payload["isVisible"] = "true"
         response = client.patch(f"/api/admin/products/{product_id}/", payload, format="multipart")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Product.objects.get(id=product_id).name, "Updated wool coat")
+        self.assertTrue(Product.objects.get(id=product_id).is_visible)
         self.assertEqual(ProductSize.objects.get(variant__product_id=product_id).stock_quantity, 7)
 
         response = client.delete(f"/api/admin/products/{product_id}/")
@@ -379,6 +412,20 @@ class ShopCrudAndApiTests(TestCase):
         self.assertEqual(response.data[0]["similarity"], 0.91)
         search_mock.assert_called_once()
         self.assertEqual(search_mock.call_args.kwargs["gender_name"], "male")
+
+    def test_visual_search_excludes_hidden_products_from_response(self):
+        hidden_data = create_catalog_product(is_visible=False)
+        hidden_product = hidden_data["product"]
+        upload = SimpleUploadedFile("query.jpg", b"image-bytes", content_type="image/jpeg")
+
+        with patch(
+            "shop.views.search_products_by_image",
+            return_value=[{"product_id": hidden_product.id, "similarity": 0.91}],
+        ):
+            response = self.client.post("/api/search-by-image/?gender=men", {"file": upload}, format="multipart")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
 
     def test_email_notifications_are_sent(self):
         data = create_catalog_product()

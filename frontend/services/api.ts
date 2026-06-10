@@ -113,6 +113,7 @@ function normalizeProduct(product: ApiProduct): Product {
     sizes: Array.isArray(product.sizes) ? product.sizes : [],
     oldPrice: product.oldPrice ?? undefined,
     isBestseller: Boolean(product.isBestseller),
+    isVisible: product.isVisible !== false,
   };
 }
 
@@ -419,6 +420,7 @@ export const adminAPI = {
       sizes: Array<{ sizeId: number; stockQuantity: number }>;
       images: File[];
       primaryImageIndex: number;
+      isVisible?: boolean;
     }
   ) => {
     const formData = new FormData();
@@ -431,6 +433,7 @@ export const adminAPI = {
     formData.append('categoryId', payload.categoryId);
     formData.append('color', payload.color);
     formData.append('primaryImageIndex', String(payload.primaryImageIndex));
+    formData.append('isVisible', String(payload.isVisible ?? true));
     payload.genderIds.forEach((id) => formData.append('genderIds', String(id)));
     formData.append('sizes', JSON.stringify(payload.sizes));
     payload.images.forEach((file) => formData.append('images', file));
@@ -460,6 +463,7 @@ export const adminAPI = {
       sizes: Array<{ sizeId: number; stockQuantity: number }>;
       images: File[];
       primaryImageIndex: number;
+      isVisible?: boolean;
     }
   ) => {
     const formData = new FormData();
@@ -472,6 +476,7 @@ export const adminAPI = {
     formData.append('categoryId', payload.categoryId);
     formData.append('color', payload.color);
     formData.append('primaryImageIndex', String(payload.primaryImageIndex));
+    formData.append('isVisible', String(payload.isVisible ?? true));
     payload.genderIds.forEach((id) => formData.append('genderIds', String(id)));
     formData.append('sizes', JSON.stringify(payload.sizes));
     payload.images.forEach((file) => formData.append('images', file));
@@ -484,6 +489,16 @@ export const adminAPI = {
       body: formData,
     }).then(normalizeProduct);
   },
+
+  updateProductVisibility: async (token: string, productId: string, isVisible: boolean) =>
+    request<Product>(`/api/admin/products/${productId}/`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(token),
+      },
+      body: JSON.stringify({ isVisible }),
+    }).then(normalizeProduct),
 
   deleteProduct: async (token: string, productId: string) =>
     request<void>(`/api/admin/products/${productId}/`, {

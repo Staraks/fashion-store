@@ -86,6 +86,7 @@ class Product(models.Model):
     )
     category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.SET_NULL)
     genders = models.ManyToManyField(Gender, through='ProductGender', related_name='products')
+    is_visible = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -94,6 +95,7 @@ class Product(models.Model):
         indexes = [
             models.Index(fields=['category'], name='idx_products_category'),
             models.Index(fields=['brand'], name='idx_products_brand'),
+            models.Index(fields=['is_visible'], name='idx_products_visible'),
         ]
 
     def __str__(self):

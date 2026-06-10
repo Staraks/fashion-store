@@ -412,6 +412,7 @@ class ProductCreateSerializer(serializers.Serializer):
     description = serializers.CharField(allow_blank=True, required=False)
     base_price = serializers.DecimalField(max_digits=12, decimal_places=2)
     discount_percent = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=0)
+    isVisible = serializers.BooleanField(required=False, default=True)
     categoryId = serializers.IntegerField()
     genderIds = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
     color = serializers.CharField(max_length=50)
@@ -492,10 +493,12 @@ class ProductCreateSerializer(serializers.Serializer):
         size_rows = validated_data.pop("sizes")
         category_id = validated_data.pop("categoryId")
         color = validated_data.pop("color")
+        is_visible = validated_data.pop("isVisible", True)
 
         with transaction.atomic():
             product = Product.objects.create(
                 category_id=category_id,
+                is_visible=is_visible,
                 **validated_data,
             )
             product.genders.add(*gender_ids)
@@ -517,6 +520,7 @@ class ProductCreateSerializer(serializers.Serializer):
         size_rows = validated_data.pop("sizes")
         category_id = validated_data.pop("categoryId")
         color = validated_data.pop("color")
+        is_visible = validated_data.pop("isVisible", instance.is_visible)
 
         with transaction.atomic():
             instance.category_id = category_id
@@ -526,6 +530,7 @@ class ProductCreateSerializer(serializers.Serializer):
             instance.description = validated_data.get("description", "")
             instance.base_price = validated_data["base_price"]
             instance.discount_percent = validated_data.get("discount_percent", 0)
+            instance.is_visible = is_visible
             instance.save()
             instance.genders.set(gender_ids)
 
@@ -569,6 +574,7 @@ class AdminProductDetailSerializer(serializers.ModelSerializer):
     color = serializers.SerializerMethodField()
     sizes = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    isVisible = serializers.BooleanField(source="is_visible")
 
     class Meta:
         model = Product
@@ -586,6 +592,7 @@ class AdminProductDetailSerializer(serializers.ModelSerializer):
             "color",
             "sizes",
             "images",
+            "isVisible",
         ]
 
     def _get_primary_variant(self, obj):
@@ -641,6 +648,7 @@ class ProductSerializer(serializers.ModelSerializer):
     images = serializers.SerializerMethodField()
     sizes = serializers.SerializerMethodField()
     isBestseller = serializers.SerializerMethodField()
+    isVisible = serializers.BooleanField(source="is_visible", read_only=True)
 
     class Meta:
         model = Product
@@ -658,6 +666,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "description",
             "sizes",
             "isBestseller",
+            "isVisible",
         ]
 
     def _get_primary_variant(self, obj):

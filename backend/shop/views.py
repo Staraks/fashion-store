@@ -58,8 +58,12 @@ GENDER_NAME_MAP = {
 }
 
 
-def _get_product_queryset():
-    return Product.objects.select_related("category").prefetch_related(
+def _get_product_queryset(include_hidden=False):
+    queryset = Product.objects.select_related("category")
+    if not include_hidden:
+        queryset = queryset.filter(is_visible=True)
+
+    return queryset.prefetch_related(
         "genders",
         "images",
         Prefetch(
@@ -104,7 +108,8 @@ def _filter_products(queryset, gender=None, category_slug=None, subcategory_slug
 
 def _get_featured_ids():
     featured_ids = list(
-        OrderDetail.objects.values("product_size__variant__product_id")
+        OrderDetail.objects.filter(product_size__variant__product__is_visible=True)
+        .values("product_size__variant__product_id")
         .annotate(total_sold=Sum("quantity"))
         .order_by("-total_sold", "-product_size__variant__product__created_at")
         .values_list("product_size__variant__product_id", flat=True)[:4]
@@ -112,7 +117,8 @@ def _get_featured_ids():
 
     if len(featured_ids) < 4:
         fallback_ids = list(
-            Product.objects.exclude(id__in=featured_ids)
+            Product.objects.filter(is_visible=True)
+            .exclude(id__in=featured_ids)
             .order_by("-created_at")
             .values_list("id", flat=True)[: 4 - len(featured_ids)]
         )
@@ -387,6 +393,7 @@ def _build_admin_product_payload(request):
         "description": request.data.get("description", ""),
         "base_price": request.data.get("base_price"),
         "discount_percent": request.data.get("discount_percent", "0"),
+        "isVisible": request.data.get("isVisible", True),
         "categoryId": request.data.get("categoryId"),
         "genderIds": request.data.getlist("genderIds"),
         "color": request.data.get("color"),
@@ -394,6 +401,18 @@ def _build_admin_product_payload(request):
         "images": request.FILES.getlist("images"),
         "primaryImageIndex": request.data.get("primaryImageIndex", 0),
     }
+
+
+def _parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    return None
 
 
 @api_view(["GET", "PATCH"])
@@ -597,7 +616,7 @@ def admin_products(request):
         brand = request.query_params.get("brand")
         featured_ids = _get_featured_ids()
         products = _filter_products(
-            _get_product_queryset(),
+            _get_product_queryset(include_hidden=True),
             category_slug=category_slug,
             subcategory_slug=subcategory,
             brand=brand,
@@ -633,7 +652,7 @@ def admin_products(request):
 
     product = serializer.save()
 
-    product = _get_product_queryset().get(id=product.id)
+    product = _get_product_queryset(include_hidden=True).get(id=product.id)
     return Response(
         _serialize_product(product, request, _get_featured_ids()),
         status=status.HTTP_201_CREATED,
@@ -663,6 +682,16 @@ def admin_product_detail_manage(request, product_id):
         product.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    if set(request.data.keys()) <= {"isVisible"} and "isVisible" in request.data:
+        is_visible = _parse_bool(request.data.get("isVisible"))
+        if is_visible is None:
+            return Response({"isVisible": "Enter a valid boolean."}, status=status.HTTP_400_BAD_REQUEST)
+
+        product.is_visible = is_visible
+        product.save(update_fields=["is_visible", "updated_at"])
+        updated_product = _get_product_queryset(include_hidden=True).get(id=product.id)
+        return Response(_serialize_product(updated_product, request, _get_featured_ids()))
+
     payload = _build_admin_product_payload(request)
     serializer = ProductCreateSerializer(instance=product, data=payload)
     if not serializer.is_valid():
@@ -686,7 +715,7 @@ def admin_product_detail_manage(request, product_id):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     updated_product = serializer.save()
-    updated_product = _get_product_queryset().get(id=updated_product.id)
+    updated_product = _get_product_queryset(include_hidden=True).get(id=updated_product.id)
     return Response(_serialize_product(updated_product, request, _get_featured_ids()))
 
 

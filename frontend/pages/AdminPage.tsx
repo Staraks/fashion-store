@@ -23,6 +23,7 @@ type FormState = {
   categoryId: string;
   subcategoryId: string;
   color: string;
+  isVisible: boolean;
 };
 
 type BrandMode = "existing" | "new";
@@ -142,6 +143,7 @@ const initialFormState: FormState = {
   categoryId: "",
   subcategoryId: "",
   color: "",
+  isVisible: true,
 };
 
 export default function AdminPage() {
@@ -186,6 +188,8 @@ export default function AdminPage() {
   const [deletingProductId, setDeletingProductId] = useState<string | null>(
     null,
   );
+  const [updatingVisibilityProductId, setUpdatingVisibilityProductId] =
+    useState<string | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
   const [updatingReviewId, setUpdatingReviewId] = useState<number | null>(null);
@@ -607,7 +611,10 @@ export default function AdminPage() {
     });
   };
 
-  const handleInputChange = (field: keyof FormState, value: string) => {
+  const handleInputChange = (
+    field: Exclude<keyof FormState, "isVisible">,
+    value: string,
+  ) => {
     setForm((prev) => ({
       ...prev,
       [field]: value,
@@ -664,6 +671,7 @@ export default function AdminPage() {
       categoryId: product.categoryId ? String(product.categoryId) : "",
       subcategoryId: product.subcategoryId ? String(product.subcategoryId) : "",
       color: product.color,
+      isVisible: product.isVisible,
     });
     setSelectedGenderIds(product.genderIds);
     setStockBySizeId(
@@ -706,6 +714,36 @@ export default function AdminPage() {
     setError(null);
     setSuccess(null);
     setProductToDelete(target);
+  };
+
+  const handleToggleProductVisibility = async (product: Product) => {
+    if (!authToken) return;
+    setUpdatingVisibilityProductId(product.id);
+    setError(null);
+    setSuccess(null);
+    try {
+      const updatedProduct = await adminAPI.updateProductVisibility(
+        authToken,
+        product.id,
+        !product.isVisible,
+      );
+      setCatalogProducts((prev) =>
+        prev.map((item) => (item.id === product.id ? updatedProduct : item)),
+      );
+      if (editingProductId === product.id) {
+        setForm((prev) => ({ ...prev, isVisible: updatedProduct.isVisible }));
+      }
+      setSuccess(
+        updatedProduct.isVisible
+          ? "Товар снова показывается в каталоге."
+          : "Товар скрыт из каталога и визуального поиска.",
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось обновить видимость товара.");
+      await loadCatalogProducts();
+    } finally {
+      setUpdatingVisibilityProductId(null);
+    }
   };
 
   const handleConfirmDeleteProduct = async () => {
@@ -766,6 +804,7 @@ export default function AdminPage() {
         sizes: selectedSizes,
         images,
         primaryImageIndex,
+        isVisible: form.isVisible,
       };
       if (editingProductId) {
         await adminAPI.updateProduct(authToken, editingProductId, payload);
@@ -938,7 +977,7 @@ export default function AdminPage() {
                   <label className="space-y-2">
                     <span className="text-sm text-neutral-600">Бренд</span>
                     <div className="space-y-3">
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() => {
@@ -1052,6 +1091,28 @@ export default function AdminPage() {
                       handleInputChange("description", e.target.value)
                     }
                     className="w-full rounded-3xl border border-neutral-200 px-4 py-3 outline-none focus:border-black"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between gap-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+                  <span>
+                    <span className="block text-sm font-medium text-neutral-900">
+                      Показывать товар в каталоге
+                    </span>
+                    <span className="mt-1 block text-sm text-neutral-500">
+                      Скрытые товары не видны покупателям и не попадают в визуальный поиск.
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={form.isVisible}
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        isVisible: event.target.checked,
+                      }))
+                    }
+                    className="h-5 w-5 accent-black"
                   />
                 </label>
 
@@ -1775,7 +1836,7 @@ export default function AdminPage() {
                 {filteredCatalogProducts.map((product) => (
                   <article
                     key={product.id}
-                    className="overflow-hidden rounded-[2rem] border border-neutral-200 bg-white"
+                    className={`overflow-hidden rounded-[2rem] border bg-white ${product.isVisible ? "border-neutral-200" : "border-amber-300"}`}
                   >
                     <div className="aspect-[4/5] overflow-hidden bg-neutral-100">
                       {product.images[0] ? (
@@ -1795,6 +1856,11 @@ export default function AdminPage() {
                         <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
                           {product.brand || "Без бренда"}
                         </p>
+                        {!product.isVisible ? (
+                          <span className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-amber-800">
+                            Скрыт
+                          </span>
+                        ) : null}
                         <h3 className="text-lg font-medium leading-tight">
                           {product.name}
                         </h3>
@@ -1802,13 +1868,25 @@ export default function AdminPage() {
                           Цена: {product.price}
                         </p>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() => handleStartEditing(product.id)}
                           className="flex-1 rounded-full bg-black px-4 py-3 text-xs uppercase tracking-[0.2em] text-white"
                         >
                           Редактировать
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleProductVisibility(product)}
+                          disabled={updatingVisibilityProductId === product.id}
+                          className="rounded-full border border-neutral-300 px-4 py-3 text-xs uppercase tracking-[0.2em] text-neutral-700 disabled:opacity-50"
+                        >
+                          {updatingVisibilityProductId === product.id
+                            ? "..."
+                            : product.isVisible
+                              ? "Скрыть"
+                              : "Показать"}
                         </button>
                         <button
                           type="button"

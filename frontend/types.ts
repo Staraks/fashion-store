@@ -13,6 +13,7 @@ export interface Product {
   description: string;
   sizes: string[];
   isBestseller?: boolean;
+  isVisible: boolean;
 }
 
 export interface CartItem extends Product {
@@ -164,4 +165,5 @@ export interface AdminProductDetail {
   color: string;
   sizes: Array<{ sizeId: number; stockQuantity: number }>;
   images: AdminProductImage[];
+  isVisible: boolean;
 }

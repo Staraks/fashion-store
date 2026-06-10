@@ -36,12 +36,14 @@ def search_products_by_image(image_file, gender_name=None):
         cursor.execute(
             f"""
             SELECT
-                product_id,
-                1 - (embedding <=> %s::vector) AS similarity
+                product_images.product_id,
+                1 - (product_images.embedding <=> %s::vector) AS similarity
             FROM product_images
-            WHERE embedding IS NOT NULL
+            JOIN products ON products.id = product_images.product_id
+            WHERE product_images.embedding IS NOT NULL
+              AND products.is_visible = TRUE
             {gender_filter_sql}
-            ORDER BY embedding <=> %s::vector
+            ORDER BY product_images.embedding <=> %s::vector
             LIMIT 100
             """,
             query_params
