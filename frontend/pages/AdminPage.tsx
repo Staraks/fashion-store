@@ -186,6 +186,7 @@ export default function AdminPage() {
   const [deletingProductId, setDeletingProductId] = useState<string | null>(
     null,
   );
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
   const [updatingReviewId, setUpdatingReviewId] = useState<number | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
@@ -699,15 +700,18 @@ export default function AdminPage() {
     }
   };
 
-  const handleDeleteProduct = async (productId: string) => {
-    if (!authToken) return;
+  const handleDeleteProduct = (productId: string) => {
     const target = catalogProducts.find((product) => product.id === productId);
-    if (
-      !window.confirm(
-        `Удалить товар "${target?.name ?? "без названия"}" из каталога?`,
-      )
-    )
-      return;
+    if (!target) return;
+    setError(null);
+    setSuccess(null);
+    setProductToDelete(target);
+  };
+
+  const handleConfirmDeleteProduct = async () => {
+    if (!authToken) return;
+    const productId = productToDelete?.id;
+    if (!productId) return;
     setDeletingProductId(productId);
     try {
       await adminAPI.deleteProduct(authToken, productId);
@@ -715,6 +719,7 @@ export default function AdminPage() {
       if (editingProductId === productId) resetForm();
       setSuccess("Товар удалён из каталога.");
       setError(null);
+      setProductToDelete(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось удалить товар.");
     } finally {
@@ -779,7 +784,8 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="px-4 md:px-8 py-10 md:py-14">
+    <>
+      <div className="px-4 md:px-8 py-10 md:py-14">
       <div className="max-w-6xl mx-auto space-y-8">
         <div className="space-y-2">
           <p className="text-xs tracking-[0.3em] uppercase text-neutral-500">
@@ -1823,6 +1829,55 @@ export default function AdminPage() {
           </section>
         ) : null}
       </div>
-    </div>
+      </div>
+      {productToDelete ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-product-title"
+          onMouseDown={() => {
+            if (!deletingProductId) setProductToDelete(null);
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <p className="text-xs uppercase tracking-[0.25em] text-red-600">
+              Удаление товара
+            </p>
+            <h2
+              id="delete-product-title"
+              className="mt-3 text-2xl font-light text-neutral-950"
+            >
+              Удалить товар из каталога?
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-neutral-600">
+              Товар "{productToDelete.name || "без названия"}" будет удален из
+              каталога. Это действие нельзя отменить.
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setProductToDelete(null)}
+                disabled={Boolean(deletingProductId)}
+                className="rounded-full border border-neutral-200 px-5 py-3 text-xs uppercase tracking-[0.2em] text-neutral-700 transition-colors hover:border-neutral-400 disabled:opacity-50"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteProduct}
+                disabled={Boolean(deletingProductId)}
+                className="rounded-full bg-red-600 px-5 py-3 text-xs uppercase tracking-[0.2em] text-white transition-opacity hover:opacity-85 disabled:opacity-50"
+              >
+                {deletingProductId ? "Удаляю..." : "Удалить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

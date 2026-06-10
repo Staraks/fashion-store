@@ -7,6 +7,12 @@ import { Product, ProductFilterOptions, ProductReviewSummary } from "../types";
 import { getCategoryLabel } from "../utils/categoryLabels";
 
 type FilterCategoryOption = ProductFilterOptions["categories"][number];
+type CategoryGroup = {
+  id: string;
+  label: string;
+  keywords: readonly string[];
+  categories: FilterCategoryOption[];
+};
 type StoredVisualSearch = {
   gender: string | null;
   imageName: string;
@@ -76,8 +82,8 @@ function getCategorySearchText(category: FilterCategoryOption) {
   return `${category.name} ${category.slug}`.toLowerCase();
 }
 
-function groupCategories(categories: FilterCategoryOption[]) {
-  const grouped = CATEGORY_GROUPS.map((group) => ({
+function groupCategories(categories: FilterCategoryOption[]): CategoryGroup[] {
+  const grouped: CategoryGroup[] = CATEGORY_GROUPS.map((group) => ({
     ...group,
     categories: categories.filter((category) => {
       const searchText = getCategorySearchText(category);
