@@ -7,6 +7,13 @@ import { Product, ProductFilterOptions, ProductReviewSummary } from "../types";
 import { getCategoryLabel } from "../utils/categoryLabels";
 
 type FilterCategoryOption = ProductFilterOptions["categories"][number];
+type StoredVisualSearch = {
+  gender: string | null;
+  imageName: string;
+  results: Product[];
+};
+
+const VISUAL_SEARCH_STORAGE_KEY = "fashion-store.visualSearch";
 
 const CATEGORY_GROUPS = [
   {
@@ -97,6 +104,32 @@ function groupCategories(categories: FilterCategoryOption[]) {
   return grouped;
 }
 
+function getStoredVisualSearch(gender: string | null): StoredVisualSearch | null {
+  try {
+    const rawValue = sessionStorage.getItem(VISUAL_SEARCH_STORAGE_KEY);
+    if (!rawValue) {
+      return null;
+    }
+
+    const storedValue = JSON.parse(rawValue) as StoredVisualSearch;
+    if (storedValue.gender !== gender || !storedValue.imageName || !Array.isArray(storedValue.results)) {
+      return null;
+    }
+
+    return storedValue;
+  } catch {
+    return null;
+  }
+}
+
+function setStoredVisualSearch(value: StoredVisualSearch) {
+  sessionStorage.setItem(VISUAL_SEARCH_STORAGE_KEY, JSON.stringify(value));
+}
+
+function clearStoredVisualSearch() {
+  sessionStorage.removeItem(VISUAL_SEARCH_STORAGE_KEY);
+}
+
 function ProductRating({
   averageRating,
   reviewsCount,
@@ -131,8 +164,13 @@ function ProductRating({
 
 export default function Catalog() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const gender = searchParams.get("category");
+  const category = searchParams.get("productCategory");
+  const subcategory = searchParams.get("subcategory");
+  const brand = searchParams.get("brand");
+  const storedVisualSearch = getStoredVisualSearch(gender);
   const [products, setProducts] = useState<Product[]>([]);
-  const [visualResults, setVisualResults] = useState<Product[]>([]);
+  const [visualResults, setVisualResults] = useState<Product[]>(storedVisualSearch?.results ?? []);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterOptions, setFilterOptions] = useState<ProductFilterOptions>({
     categories: [],
@@ -142,16 +180,11 @@ export default function Catalog() {
   const [loading, setLoading] = useState(true);
   const [visualSearchLoading, setVisualSearchLoading] = useState(false);
   const [visualSearchError, setVisualSearchError] = useState("");
-  const [selectedImageName, setSelectedImageName] = useState("");
+  const [selectedImageName, setSelectedImageName] = useState(storedVisualSearch?.imageName ?? "");
   const [selectedImagePreview, setSelectedImagePreview] = useState("");
   const [productRatings, setProductRatings] = useState<
     Record<string, ProductReviewSummary>
   >({});
-
-  const gender = searchParams.get("category");
-  const category = searchParams.get("productCategory");
-  const subcategory = searchParams.get("subcategory");
-  const brand = searchParams.get("brand");
 
   useEffect(() => {
     setLoading(true);
@@ -171,11 +204,22 @@ export default function Catalog() {
   }, [gender, category, subcategory, brand]);
 
   useEffect(() => {
-    setVisualResults([]);
-    setVisualSearchError("");
-    setSelectedImageName("");
-    setSelectedImagePreview("");
+    const nextStoredVisualSearch = getStoredVisualSearch(gender);
+    if (!nextStoredVisualSearch) {
+      clearStoredVisualSearch();
+    }
+
+    setVisualResults(nextStoredVisualSearch?.results ?? []);
+    setSelectedImageName(nextStoredVisualSearch?.imageName ?? "");
     setVisualSearchLoading(false);
+    setVisualSearchError("");
+    setSelectedImagePreview((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev);
+      }
+
+      return "";
+    });
   }, [gender]);
 
   useEffect(() => {
@@ -209,8 +253,14 @@ export default function Catalog() {
     try {
       const matchedProducts = await productsAPI.searchByImage(file, gender);
       setVisualResults(matchedProducts);
+      setStoredVisualSearch({
+        gender,
+        imageName: file.name,
+        results: matchedProducts,
+      });
     } catch (error) {
       setVisualResults([]);
+      clearStoredVisualSearch();
       setVisualSearchError(
         error instanceof Error
           ? error.message
@@ -223,6 +273,7 @@ export default function Catalog() {
   };
 
   const resetVisualSearch = () => {
+    clearStoredVisualSearch();
     setVisualResults([]);
     setVisualSearchError("");
     setSelectedImageName("");
@@ -342,6 +393,18 @@ export default function Catalog() {
 
     setSearchQuery("");
     setSearchParams(nextParams);
+  };
+
+  const getProductLink = (productId: string) => {
+    const params = new URLSearchParams();
+
+    if (gender) {
+      params.set("fromCategory", gender);
+    }
+
+    params.set("returnTo", `/catalog${searchParams.toString() ? `?${searchParams.toString()}` : ""}`);
+
+    return `/product/${productId}?${params.toString()}`;
   };
 
   return (
@@ -532,7 +595,7 @@ export default function Catalog() {
           {displayedProducts.map((product) => (
             <Link
               key={product.id}
-              to={`/product/${product.id}`}
+              to={getProductLink(product.id)}
               className="group block text-inherit no-underline"
             >
               <div className="relative mb-6 aspect-[3/4] overflow-hidden bg-gray-50">

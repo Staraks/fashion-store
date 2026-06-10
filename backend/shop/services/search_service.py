@@ -2,10 +2,9 @@ import requests
 from django.db import connection
 
 AI_URL = "http://127.0.0.1:8001/search-by-image"
-MAX_RESULTS = 10
 MIN_SIMILARITY = 0.8
 MIN_FALLBACK_SIMILARITY = 0.6
-FALLBACK_RESULTS = 1
+FALLBACK_RESULTS = 4
 
 
 def search_products_by_image(image_file, gender_name=None):
@@ -74,12 +73,12 @@ def search_products_by_image(image_file, gender_name=None):
         if result["similarity"] >= MIN_SIMILARITY
     ]
 
-    if high_confidence_results:
-        return high_confidence_results[:MAX_RESULTS]
-
     fallback_results = [
         result for result in ranked_results
-        if result["similarity"] >= MIN_FALLBACK_SIMILARITY
+        if MIN_FALLBACK_SIMILARITY <= result["similarity"] < MIN_SIMILARITY
     ]
+
+    if high_confidence_results:
+        return high_confidence_results + fallback_results[:FALLBACK_RESULTS]
 
     return fallback_results[:FALLBACK_RESULTS]

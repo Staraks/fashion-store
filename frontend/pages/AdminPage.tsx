@@ -33,6 +33,10 @@ type CatalogFilterState = {
   search: string;
 };
 
+const ALPHA_SIZE_ORDER = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL"];
+const DENIM_SIZE_ORDER = ["24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34"];
+const SHOE_SIZE_ORDER = ["35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45"];
+
 const ADMIN_SECTIONS: Array<{
   id: AdminSectionId;
   label: string;
@@ -276,40 +280,17 @@ export default function AdminPage() {
 
   const availableSizes = useMemo(() => {
     if (!options || !activeCategory) return [];
-    const alpha = ["XS", "S", "M", "L", "XL"];
-    const denim = [
-      "24",
-      "25",
-      "26",
-      "27",
-      "28",
-      "29",
-      "30",
-      "31",
-      "32",
-      "33",
-      "34",
-    ];
-    const shoes = [
-      "35",
-      "36",
-      "37",
-      "38",
-      "39",
-      "40",
-      "41",
-      "42",
-      "43",
-      "44",
-      "45",
-    ];
     const allowed =
       activeCategory.sizeGroup === "denim"
-        ? denim
+        ? DENIM_SIZE_ORDER
         : activeCategory.sizeGroup === "shoes"
-          ? shoes
-          : alpha;
-    return options.sizes.filter((size) => allowed.includes(size.name));
+          ? SHOE_SIZE_ORDER
+          : ALPHA_SIZE_ORDER;
+    const sizeByName = new Map(options.sizes.map((size) => [size.name, size]));
+
+    return allowed
+      .map((sizeName) => sizeByName.get(sizeName))
+      .filter((size): size is NonNullable<typeof size> => Boolean(size));
   }, [options, activeCategory]);
 
   const imagePreviews = useMemo(

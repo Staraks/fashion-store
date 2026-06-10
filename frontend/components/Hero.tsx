@@ -27,13 +27,13 @@ export default function Hero() {
         </h1>
         <div className="flex items-center justify-center gap-8 font-inter font-semibold text-lg md:text-xl">
           <Link
-            to="/products?brand=Maison Margiela&gender=women"
+            to="/catalog?category=women&brand=Maison+Margiela"
             className="underline underline-offset-[3px] decoration-white hover:text-gray-200 hover:decoration-gray-200"
           >
             Женщинам
           </Link>
           <Link
-            to="/products?brand=Maison Margiela&gender=men"
+            to="/catalog?category=men&brand=Maison+Margiela"
             className="underline underline-offset-[3px] decoration-white hover:text-gray-200 hover:decoration-gray-200"
           >
             Мужчинам

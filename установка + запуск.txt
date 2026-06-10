@@ -1,0 +1,93 @@
+открыть терминал и проверить:
+
+docker --version
+
+Создать PostgreSQL-контейнер с pgvector
+
+На новом ПК выполни:
+
+docker run --name fashion-postgres ^
+  -e POSTGRES_USER=postgres ^
+  -e POSTGRES_PASSWORD=postgres ^
+  -e POSTGRES_DB=fashion_store ^
+  -p 5434:5432 ^
+  -d ankane/pgvector
+
+Проверить, что контейнер запустился
+
+docker ps
+
+Перейти в папку проекта
+cd C:\Projects\fashion-store
+
+или туда, куда ты перенёс проект.
+
+Восстановить базу из backup.sql
+docker exec -i fashion-postgres psql -U postgres -d fashion_store < backup.sql
+
+Проверить таблицы
+docker exec -it fashion-postgres psql -U postgres -d fashion_store
+
+Внутри напиши:
+
+\dt
+
+Если видишь свои таблицы — база перенеслась.
+
+Потом:
+
+\q
+
+
+
+
+
+
+На новом ПК из корня проекта fashion-store выполни:
+
+cd backend
+python -m venv .venv
+.\.venv\Scripts\activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+Потом AI-сервис отдельно:
+
+cd ..\ai-service
+python -m venv .venv
+.\.venv\Scripts\activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+Потом frontend:
+
+cd ..\frontend
+npm ci
+
+Если npm ci ругнётся на несовпадение package.json и package-lock.json, тогда:
+
+npm install
+
+Для запуска потом обычно так:
+
+Backend:
+
+cd backend
+.\.venv\Scripts\activate
+python manage.py runserver
+
+AI-сервис:
+
+cd ai-service
+.\.venv\Scripts\activate
+uvicorn main:app --host 127.0.0.1 --port 8001
+
+Frontend:
+
+cd frontend
+npm run dev
+
+
+
+админка:
+http://127.0.0.1:8000/admin/

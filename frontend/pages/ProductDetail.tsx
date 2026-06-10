@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Heart, Minus, Plus, Star } from 'lucide-react';
 
 import { productsAPI } from '../services/api';
@@ -17,6 +17,7 @@ function formatReviewDate(value: string) {
 
 export default function ProductDetail() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [reviewsLoading, setReviewsLoading] = useState(true);
@@ -90,6 +91,12 @@ export default function ProductDetail() {
 
   if (loading) return <div className="py-40 text-center">Загрузка...</div>;
   if (!product) return <div className="py-40 text-center">Товар не найден.</div>;
+
+  const fromCategory = searchParams.get('fromCategory');
+  const returnTo = searchParams.get('returnTo');
+  const breadcrumbCategory = fromCategory || product.category;
+  const breadcrumbCategoryLink =
+    returnTo?.startsWith('/catalog') ? returnTo : `/catalog?category=${breadcrumbCategory}`;
 
   const handleAddToCart = () => {
     if (!selectedSize) {
@@ -167,7 +174,7 @@ export default function ProductDetail() {
     <main className="mx-auto max-w-7xl px-4 py-8 md:py-16">
       <nav className="mb-12 flex gap-2 text-[10px] font-bold uppercase tracking-widest opacity-40 md:text-xs">
         <Link to="/catalog">Каталог</Link> /
-        <Link to={`/catalog?category=${product.category}`}>{getCategoryLabel(product.category)}</Link> /
+        <Link to={breadcrumbCategoryLink}>{getCategoryLabel(breadcrumbCategory)}</Link> /
         <span className="text-black">{product.name}</span>
       </nav>
 
